@@ -9,7 +9,8 @@ import com.ynu.marginx.domain.port.CircuitSimulator;
 import com.ynu.marginx.domain.service.BinarySearchMarginSearcher;
 import com.ynu.marginx.domain.service.OperationEvaluator;
 import com.ynu.marginx.domain.service.OperationJudge;
-import com.ynu.marginx.infrastructure.config.SimulatorProperties;
+import com.ynu.marginx.infrastructure.config.SimulatorKind;
+import com.ynu.marginx.infrastructure.config.SimulatorLocation;
 import com.ynu.marginx.infrastructure.netlist.JsimPrintDirectiveConverter;
 import com.ynu.marginx.infrastructure.netlist.NetlistRenderer;
 import com.ynu.marginx.infrastructure.result.JsimCsvReader;
@@ -76,8 +77,8 @@ class JsimSimulatorProcessTest {
     private CircuitSimulator simulatorAcceptingWindow(double lower, double upper) throws IOException {
         String command = StubJosimLauncher.write(scriptDirectory, StubJsim.class, lower, upper);
         return new JsimSimulator(
-                new SimulatorProperties("josim", command, Duration.ofSeconds(60)),
-                new NetlistRenderer(), new JsimPrintDirectiveConverter(), new JsimCsvReader(),
-                new ProcessExecutor());
+                SimulatorLocation.found(SimulatorKind.JSIM, Path.of(command), SimulatorLocation.Source.USER_SETTING),
+                Duration.ofSeconds(60), new NetlistRenderer(), new JsimPrintDirectiveConverter(),
+                new JsimCsvReader(), new ProcessExecutor());
     }
 }

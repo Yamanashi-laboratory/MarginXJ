@@ -13,7 +13,8 @@ import com.ynu.marginx.domain.service.BinarySearchMarginSearcher;
 import com.ynu.marginx.domain.service.CriticalElementFinder;
 import com.ynu.marginx.domain.service.OperationEvaluator;
 import com.ynu.marginx.domain.service.OperationJudge;
-import com.ynu.marginx.infrastructure.config.SimulatorProperties;
+import com.ynu.marginx.infrastructure.config.SimulatorKind;
+import com.ynu.marginx.infrastructure.config.SimulatorLocation;
 import com.ynu.marginx.infrastructure.judgement.FileJudgementSpecRepository;
 import com.ynu.marginx.infrastructure.judgement.JudgementSpecParser;
 import com.ynu.marginx.infrastructure.netlist.FileNetlistRepository;
@@ -58,8 +59,9 @@ class RealJosimIT {
         netlist = new FileNetlistRepository(workingDirectory, new NetlistParser()).load("test_JTL");
         spec = new FileJudgementSpecRepository(workingDirectory, new JudgementSpecParser()).load("test_JTL");
         simulator = new JosimSimulator(
-                new SimulatorProperties(System.getProperty("marginx.it.josim"), "jsim", Duration.ofMinutes(2)),
-                new NetlistRenderer(), new JosimCsvReader(), new ProcessExecutor());
+                SimulatorLocation.found(SimulatorKind.JOSIM, Path.of(System.getProperty("marginx.it.josim")),
+                        SimulatorLocation.Source.SYSTEM_PROPERTY),
+                Duration.ofMinutes(2), new NetlistRenderer(), new JosimCsvReader(), new ProcessExecutor());
     }
 
     @Test

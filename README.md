@@ -15,22 +15,31 @@ com.ynu.marginx
 │   └─ view/                  ProgressBarView, MarginChartView, DetailView
 ├─ application/           ユースケース（手順の組み立てのみ。計算はしない）
 │   ├─ CalculateMarginUseCase   ExecutorService で素子ごとに並列探索
+│   ├─ OptimizeCircuitUseCase   最適化結果の回路と margins を保存
+│   ├─ ParallelOperationSampler モンテカルロ 1 サイクル分を並列評価
 │   ├─ JudgeOperationUseCase
 │   └─ ProgressListener
 ├─ domain/                外部技術を一切知らない層
 │   ├─ model/circuit/       ElementType, CircuitElement, ShuntSpec, ParameterRange, Netlist
 │   ├─ model/margin/        Margin, ElementMargin, MarginTable
 │   ├─ model/judge/         JudgementRule, JudgementSpec, SimulationResult, JudgementOutcome
+│   ├─ model/optimize/      ScoreWeights, OptimizationOutcome
 │   ├─ port/                CircuitSimulator, NetlistRepository,
 │   │                       JudgementSpecRepository, MarginResultRepository
 │   └─ service/             MarginSearcher (IF) → Exhaustive / BinarySearch
 │                           OperationJudge, OperationEvaluator, CriticalElementFinder
+│                           CriticalMarginMethod, CenterOfGravityOptimizer
+│                           CriticalMarginCalculator, ScoreCalculator
+│                           MarginTableCalculator, OperationSampler, RandomSource
 ├─ infrastructure/        port の実装（技術詳細の置き場）
 │   ├─ netlist/             NetlistParser, NetlistRenderer, FileNetlistRepository
+│   │                       JsimPrintDirectiveConverter
 │   ├─ judgement/           JudgementSpecParser, FileJudgementSpecRepository
-│   ├─ simulator/           JosimSimulator, ProcessExecutor
-│   ├─ result/              JosimCsvReader, FileMarginResultRepository
-│   └─ config/              SimulatorProperties
+│   ├─ simulator/           ExternalProcessSimulator → JosimSimulator / JsimSimulator
+│   │                       SimulatorRegistry, ProcessExecutor
+│   ├─ result/              JosimCsvReader, JsimCsvReader, FileMarginResultRepository
+│   └─ config/              SimulatorProperties, SimulatorKind,
+│                           SimulatorLocation, UserSimulatorSettings
 └─ shared/exception/      MarginXException とそのサブクラス
 ```
 
@@ -52,8 +61,17 @@ com.ynu.marginx
 | `make_cir.cpp` の `switch(ide_num)` | `ElementType` の各定数の `render()` |
 | `judgement_file.cpp` | `JudgementSpecParser` |
 | `readJOSIMData.cpp` | `JosimCsvReader` |
+| `readJSIMdata.cpp` | `JsimCsvReader` |
+| `convert_jsim.cpp` | `JsimPrintDirectiveConverter` |
+| `margin_ele_syn.cpp`, `synchro.cpp` | `ExhaustiveMarginSearcher`（同期モード） |
+| `critical_margin_method.cpp` | `CriticalMarginMethod` |
+| `optimize_yield_up.cpp`, `optimize_seq.cpp`, `opt_ele_yield.cpp` | `CenterOfGravityOptimizer` |
+| `calc_score.cpp`, `select_score.cpp` | `ScoreCalculator`, `ScoreWeights`, `ScoreChoice` |
+| `calc_critical*.cpp` | `CriticalMarginCalculator` |
+| `make_cir_last.cpp` | `NetlistRepository#save` |
 | `file_out.cpp` | `FileMarginResultRepository` |
-| `#define JOSIM_COMMAND` | `application.properties` / `-Dmarginx.josim.command=` |
+| `#define JOSIM_COMMAND` | `SimulatorLocation`（保存設定 → 環境変数 → `-D` → PATH → 既定の場所） |
+| `menu 8`（JSIM サブメニュー） | `--simulator` と `SimulatorRegistry`（モードから独立） |
 | `function.hpp` の構造体 | `domain/model/` の record |
 
 ### `_jsim` 二重化の解消
@@ -133,12 +151,29 @@ portable zip は展開するだけで動きます（Windows は `MarginXJ.exe`�
 macOS 向けの配布物と、x86_64 以外（Linux arm64 など）向けの配布物は現時点ではありません。
 これらの環境では「ビルドと実行（開発者向け）」の手順でソースからビルドしてください。
 
-### JoSIM の場所を教える
+### シミュレータの場所
 
-JoSIM が PATH にあれば設定は不要です。PATH に無い場合、または特定のビルドを
-使いたい場合は、環境変数で場所を指定します。
+実行ファイルは次の順で探します。上にあるものが優先されます。
 
-Linux:
+1. **設定に保存したパス** — 下記の `--set-josim-path` で永続化した値
+2. **環境変数** `MARGINX_JOSIM_COMMAND` / `MARGINX_JSIM_COMMAND`
+3. **システムプロパティ** `-Dmarginx.josim.command=` / `-Dmarginx.jsim.command=`
+4. **PATH** 上の `josim` / `jsim`（Windows では `PATHEXT` の拡張子も探索）
+5. **OS ごとの一般的なインストール先**（`C:\Program Files\JoSIM`、`/usr/local/bin`、
+   ビルドツリーの `~/JoSIM/build/Release` など）
+
+PATH にあれば設定は不要です。1〜3 は「どの実行ファイルを使うか」の明示指定なので、
+**指定したのに見つからない場合は、黙って他の候補にフォールバックせずエラーになります。**
+
+保存する場合（一度実行すれば以降も有効です）。保存先は OS 標準の設定ディレクトリで、
+Windows は `%APPDATA%\MarginXJ`、macOS は `~/Library/Application Support/MarginXJ`、
+Linux は `$XDG_CONFIG_HOME`（既定 `~/.config/marginxj`）です。
+
+```bash
+MarginXJ --set-josim-path /usr/local/bin/josim
+```
+
+環境変数で一時的に指定する場合。
 
 ```bash
 MARGINX_JOSIM_COMMAND=/usr/local/bin/josim MarginXJ test_JTL -m 2
@@ -150,10 +185,9 @@ Windows (PowerShell):
 $env:MARGINX_JOSIM_COMMAND = "C:\tools\josim.exe"
 ```
 
-インストーラで導入した MarginXJ では、この環境変数が唯一の指定方法です。
-`-Dmarginx.josim.command=...` も同じ設定を指しますが、こちらは `java -jar` や
-`./gradlew run` で JVM を直接起動する場合にのみ有効です（インストール版の起動ファイルは
-コマンドライン引数をアプリケーションへ渡すため、`-D` は JVM に届きません）。
+`-Dmarginx.josim.command=...` は `java -jar` や `./gradlew run` で JVM を直接起動する場合にのみ
+有効です。インストーラ版の起動ファイルはコマンドライン引数をアプリケーションへ渡すため、
+`-D` は JVM に届きません。インストール版では 1 か 2 を使ってください。
 
 ### JSIM について
 
@@ -163,6 +197,29 @@ $env:MARGINX_JOSIM_COMMAND = "C:\tools\josim.exe"
 
 ```bash
 MARGINX_JSIM_COMMAND=/usr/local/bin/jsim MarginXJ test_JTL -m 2
+```
+
+両者は数値計算エンジンが異なり、結果が一致する保証はありません。そのため
+**フォールバックは決して黙って起きません。**
+
+- JSIM に切り替わる場合、計算を始める前に警告を表示します
+  （「JoSIM が見つからないため JSIM を使用します。結果は JoSIM と一致しない可能性があります」）。
+- 結果ファイル `result_*.csv` / `result_*.txt` の先頭に、使用したシミュレータ名と解決された
+  実行ファイルのパスを `#` 始まりのコメント行として記録します。後から結果ファイルだけを見ても
+  出所が分かります。データ行の形式は従来どおりです。
+
+  ```
+  # simulator: JSIM
+  # executable: C:\Program Files (x86)\jsim\jsim.exe
+  J01,-96.5820,99.9023
+  ```
+
+使うシミュレータは実行モードとは独立した最上位の設定です（C++ 版のような「JSIM 専用サブメニュー」は
+設けていません）。`--simulator josim|jsim|auto` で明示でき、既定は `auto` です。明示した側が
+見つからない場合は、もう一方に切り替えずエラーになります。
+
+```bash
+MarginXJ test_JTL -m 3 --simulator jsim
 ```
 
 JSIM 特有の癖は 2 点あり、いずれも実機の JSIM で確認したうえで吸収しています。
@@ -216,7 +273,7 @@ JoSIM のコマンド名は設定で差し替えられます。
 
 検証済み:
 
-- `./gradlew clean build` は **BUILD SUCCESSFUL**、テスト **74 件すべて通過**（JDK 26、
+- `./gradlew clean build` は **BUILD SUCCESSFUL**、テスト **90 件すべて通過**（JDK 26、
   実 JoSIM と実 JSIM を指定した状態で計測。指定が無い場合は IT 4 件がスキップされます）。
   `org.openjfx.javafxplugin` 0.1.0 は Gradle 9 でも問題なく動作します。
 - **実 JoSIM 2.6.8 に対する `RealJosimIT` が通過。** かねてより未検証だった
@@ -284,7 +341,10 @@ JAVA_TOOL_OPTIONS = -Djdk.net.unixdomain.tmpdir=%USERPROFILE%/.gradle/uds
 - `JsimPrintDirectiveConverterTest` / `JsimCsvReaderTest` — JSIM 向けの変換と、ヘッダ無し CSV・
   発散値（`-1.#IO`）の解釈
 - `JosimSimulatorProcessTest` / `JsimSimulatorProcessTest` — **外部プロセスを実際に起動**する統合テスト（下記）
-- `SimulatorSelectorTest` — JoSIM 優先・JSIM フォールバックの検出
+- `SimulatorLocationTest` — 5 段階の解決順（保存設定 → 環境変数 → システムプロパティ → PATH →
+  一般的インストール先）と、明示指定が解決できない場合にフォールバックせず失敗すること
+- `SimulatorRegistryTest` — JoSIM のみ / JSIM のみ / 両方 / どちらも無し / 明示指定 の選択
+- `FileMarginResultRepositoryTest` — 結果ファイル先頭の出所記録と、データ行の形式が変わらないこと
 - `RealJosimIT` / `RealJsimIT` — 実シミュレータに対するテスト。既定ではスキップ
 
 ### 実シミュレータでのテスト

@@ -2,10 +2,11 @@ package com.ynu.marginx.infrastructure.simulator;
 
 import com.ynu.marginx.domain.model.circuit.Netlist;
 import com.ynu.marginx.domain.model.judge.SimulationResult;
-import com.ynu.marginx.infrastructure.config.SimulatorProperties;
+import com.ynu.marginx.infrastructure.config.SimulatorLocation;
 import com.ynu.marginx.infrastructure.netlist.NetlistRenderer;
 import com.ynu.marginx.infrastructure.result.JosimCsvReader;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 
 /** Drives JoSIM, which writes its CSV where the {@code .FILE} directive points. */
@@ -13,21 +14,14 @@ public final class JosimSimulator extends ExternalProcessSimulator {
 
     private static final String OUTPUT_FILE = "CIRCUIT.CSV";
 
-    private final SimulatorProperties properties;
     private final NetlistRenderer renderer;
     private final JosimCsvReader reader;
 
-    public JosimSimulator(SimulatorProperties properties, NetlistRenderer renderer,
+    public JosimSimulator(SimulatorLocation location, Duration timeout, NetlistRenderer renderer,
                           JosimCsvReader reader, ProcessExecutor executor) {
-        super(executor, properties.timeout());
-        this.properties = properties;
+        super(executor, timeout, location);
         this.renderer = renderer;
         this.reader = reader;
-    }
-
-    @Override
-    public String name() {
-        return properties.josimCommand();
     }
 
     @Override

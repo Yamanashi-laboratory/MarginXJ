@@ -13,10 +13,28 @@ import java.util.Locale;
 
 public final class FileMarginResultRepository implements MarginResultRepository {
 
+    /**
+     * Which simulator produced a result file, recorded at the top of it. JoSIM and JSIM do not
+     * share a numerical engine, so a file of margins is only meaningful next to the name of the
+     * engine that measured them.
+     */
+    public record Provenance(String simulator, String executable) {
+
+        public List<String> asComments() {
+            return List.of("# simulator: " + simulator, "# executable: " + executable);
+        }
+    }
+
     private final Path outputDirectory;
+    private final Provenance provenance;
 
     public FileMarginResultRepository(Path outputDirectory) {
+        this(outputDirectory, null);
+    }
+
+    public FileMarginResultRepository(Path outputDirectory, Provenance provenance) {
         this.outputDirectory = outputDirectory;
+        this.provenance = provenance;
     }
 
     @Override
@@ -29,9 +47,9 @@ public final class FileMarginResultRepository implements MarginResultRepository 
             detail.add(formatDetail(entry));
         }
 
-        write(outputDirectory.resolve("result_" + baseName + ".csv"), csv);
-        write(outputDirectory.resolve("result.csv"), csv);
-        write(outputDirectory.resolve("result_" + baseName + ".txt"), detail);
+        write(outputDirectory.resolve("result_" + baseName + ".csv"), withProvenance(csv));
+        write(outputDirectory.resolve("result.csv"), withProvenance(csv));
+        write(outputDirectory.resolve("result_" + baseName + ".txt"), withProvenance(detail));
     }
 
     private String formatDetail(ElementMargin entry) {
@@ -40,6 +58,16 @@ public final class FileMarginResultRepository implements MarginResultRepository 
                 entry.displayName(), entry.element().value(), entry.element().unit(),
                 entry.lowerValue(), entry.upperValue(), entry.medianValue(),
                 entry.margin().lowerPercent(), entry.margin().upperPercent());
+    }
+
+    /** Comment lines, so a reader that skips # still sees the same columns it always did. */
+    private List<String> withProvenance(List<String> lines) {
+        if (provenance == null) {
+            return lines;
+        }
+        List<String> annotated = new ArrayList<>(provenance.asComments());
+        annotated.addAll(lines);
+        return annotated;
     }
 
     private void write(Path target, List<String> lines) {

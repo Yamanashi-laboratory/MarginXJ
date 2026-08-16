@@ -26,6 +26,7 @@ import com.ynu.marginx.domain.service.OperationEvaluator;
 import com.ynu.marginx.domain.service.OperationJudge;
 import com.ynu.marginx.domain.service.RandomSource;
 import com.ynu.marginx.domain.service.ScoreCalculator;
+import com.ynu.marginx.infrastructure.config.SimulatorKind;
 import com.ynu.marginx.infrastructure.config.SimulatorProperties;
 import com.ynu.marginx.infrastructure.judgement.FileJudgementSpecRepository;
 import com.ynu.marginx.infrastructure.judgement.JudgementSpecParser;
@@ -34,12 +35,14 @@ import com.ynu.marginx.infrastructure.netlist.NetlistParser;
 import com.ynu.marginx.infrastructure.netlist.NetlistRenderer;
 import com.ynu.marginx.infrastructure.result.FileMarginResultRepository;
 import com.ynu.marginx.infrastructure.simulator.ProcessExecutor;
-import com.ynu.marginx.infrastructure.simulator.SimulatorSelector;
+import com.ynu.marginx.infrastructure.config.UserSimulatorSettings;
+import com.ynu.marginx.infrastructure.simulator.SimulatorRegistry;
 import com.ynu.marginx.presentation.view.DetailView;
 import com.ynu.marginx.presentation.view.MarginChartView;
 import com.ynu.marginx.presentation.view.ProgressBarView;
 import com.ynu.marginx.shared.exception.MarginXException;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.concurrent.Callable;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -66,6 +69,19 @@ public final class MarginXCommand implements Callable<Integer> {
     @Option(names = {"-m", "--mode"}, description = "Skip the interactive menu and run this mode.")
     private Integer mode;
 
+    @Option(names = "--simulator", paramLabel = "NAME",
+            description = "Which simulator to run: josim, jsim or auto. Defaults to auto, which"
+                    + " prefers JoSIM and warns before falling back to JSIM.")
+    private String simulator = "auto";
+
+    @Option(names = "--set-josim-path", paramLabel = "PATH",
+            description = "Remember this JoSIM executable for future runs, then exit.")
+    private String josimPath;
+
+    @Option(names = "--set-jsim-path", paramLabel = "PATH",
+            description = "Remember this JSIM executable for future runs, then exit.")
+    private String jsimPath;
+
     @Option(names = {"-s", "--score"},
             description = "What an optimisation maximises: 1 critical, 2 bias, 3 upper, 4 lower,"
                     + " 5 critical+bias, 6 critical+2*bias. Defaults to 1.")
@@ -83,14 +99,26 @@ public final class MarginXCommand implements Callable<Integer> {
         NetlistRepository netlists = new FileNetlistRepository(workingDirectory, new NetlistParser());
         JudgementSpecRepository specs =
                 new FileJudgementSpecRepository(workingDirectory, new JudgementSpecParser());
-        MarginResultRepository results = new FileMarginResultRepository(workingDirectory);
+        UserSimulatorSettings userSettings = UserSimulatorSettings.inDefaultLocation();
 
         try {
+            if (josimPath != null || jsimPath != null) {
+                return remember(userSettings);
+            }
             // JoSIM when it is installed, JSIM only when it is not: neither ships with MarginXJ.
             // Selecting inside the try keeps a missing simulator on the same one-line error path.
-            CircuitSimulator simulator = new SimulatorSelector(
-                    properties, new NetlistRenderer(), new ProcessExecutor()).select();
-            OperationEvaluator evaluator = new OperationEvaluator(simulator, new OperationJudge());
+            SimulatorRegistry registry = new SimulatorRegistry(properties, userSettings,
+                    new NetlistRenderer(), new ProcessExecutor());
+            SimulatorRegistry.Selection selection = registry.resolve(choice());
+            CircuitSimulator chosen = selection.simulator();
+            if (selection.fallback()) {
+                // Never let a change of engine pass unremarked, and say so before the run starts.
+                System.out.println(" WARNING : " + selection.warning());
+                System.out.println();
+            }
+            MarginResultRepository results = new FileMarginResultRepository(workingDirectory,
+                    new FileMarginResultRepository.Provenance(chosen.displayName(), chosen.name()));
+            OperationEvaluator evaluator = new OperationEvaluator(chosen, new OperationJudge());
 
             Netlist netlist = netlists.load(circuit);
             JudgementSpec spec = specs.load(judgement != null ? judgement : circuit);
@@ -116,6 +144,30 @@ public final class MarginXCommand implements Callable<Integer> {
             System.err.println(" ERROR : " + e.getMessage());
             return 1;
         }
+    }
+
+    private SimulatorRegistry.Choice choice() {
+        return switch (simulator.toLowerCase(Locale.ROOT)) {
+            case "auto" -> SimulatorRegistry.Choice.AUTO;
+            case "josim" -> SimulatorRegistry.Choice.JOSIM;
+            case "jsim" -> SimulatorRegistry.Choice.JSIM;
+            default -> throw new MarginXException("Unknown simulator: " + simulator
+                    + ". Use josim, jsim or auto.");
+        };
+    }
+
+    /** --set-*-path writes the setting and stops; it is configuration, not a run. */
+    private int remember(UserSimulatorSettings userSettings) {
+        if (josimPath != null) {
+            userSettings.save(SimulatorKind.JOSIM, josimPath);
+            System.out.println(" Saved JoSIM path : " + josimPath);
+        }
+        if (jsimPath != null) {
+            userSettings.save(SimulatorKind.JSIM, jsimPath);
+            System.out.println(" Saved JSIM path  : " + jsimPath);
+        }
+        System.out.println(" Settings file    : " + userSettings.file());
+        return 0;
     }
 
     private MarginSearcher searcher(OperationMode selected, OperationEvaluator evaluator) {

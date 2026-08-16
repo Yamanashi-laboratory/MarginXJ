@@ -3,6 +3,7 @@ package com.ynu.marginx.infrastructure.simulator;
 import com.ynu.marginx.domain.model.circuit.Netlist;
 import com.ynu.marginx.domain.model.judge.SimulationResult;
 import com.ynu.marginx.domain.port.CircuitSimulator;
+import com.ynu.marginx.infrastructure.config.SimulatorLocation;
 import com.ynu.marginx.shared.exception.SimulationFailedException;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -28,14 +29,47 @@ abstract sealed class ExternalProcessSimulator implements CircuitSimulator
 
     private final ProcessExecutor executor;
     private final Duration timeout;
+    private final SimulatorLocation location;
 
-    ExternalProcessSimulator(ProcessExecutor executor, Duration timeout) {
+    ExternalProcessSimulator(ProcessExecutor executor, Duration timeout, SimulatorLocation location) {
         this.executor = executor;
         this.timeout = timeout;
+        this.location = location;
+    }
+
+    /**
+     * The location was resolved once, when this adapter was built, and is not looked up again.
+     * A margin run asks per element, and the answer cannot change underneath it.
+     */
+    @Override
+    public final boolean isAvailable() {
+        return location.found();
+    }
+
+    @Override
+    public final String unavailableReason() {
+        return location.found() ? "" : location.reason();
+    }
+
+    @Override
+    public final String displayName() {
+        return location.kind().displayName();
+    }
+
+    @Override
+    public final String name() {
+        return location.command();
+    }
+
+    public final SimulatorLocation location() {
+        return location;
     }
 
     @Override
     public final SimulationResult simulate(Netlist netlist) {
+        if (!location.found()) {
+            throw new SimulationFailedException(location.reason());
+        }
         Path workDirectory = createWorkDirectory();
         try {
             Files.write(workDirectory.resolve(NETLIST_FILE), render(netlist, outputFileName()));

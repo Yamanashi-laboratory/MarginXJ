@@ -11,7 +11,8 @@ import com.ynu.marginx.domain.port.CircuitSimulator;
 import com.ynu.marginx.domain.service.BinarySearchMarginSearcher;
 import com.ynu.marginx.domain.service.OperationEvaluator;
 import com.ynu.marginx.domain.service.OperationJudge;
-import com.ynu.marginx.infrastructure.config.SimulatorProperties;
+import com.ynu.marginx.infrastructure.config.SimulatorKind;
+import com.ynu.marginx.infrastructure.config.SimulatorLocation;
 import com.ynu.marginx.infrastructure.netlist.NetlistRenderer;
 import com.ynu.marginx.infrastructure.result.JosimCsvReader;
 import com.ynu.marginx.shared.exception.SimulationFailedException;
@@ -104,8 +105,9 @@ class JosimSimulatorProcessTest {
     @Test
     void reportsAMissingSimulatorInsteadOfHanging() {
         CircuitSimulator missing = new JosimSimulator(
-                new SimulatorProperties("no-such-simulator-binary", "jsim", Duration.ofSeconds(10)),
-                new NetlistRenderer(), new JosimCsvReader(), new ProcessExecutor());
+                SimulatorLocation.found(SimulatorKind.JOSIM, Path.of("no-such-simulator-binary"),
+                        SimulatorLocation.Source.SYSTEM_PROPERTY),
+                Duration.ofSeconds(10), new NetlistRenderer(), new JosimCsvReader(), new ProcessExecutor());
 
         assertThatThrownBy(() -> missing.simulate(Circuits.singleResistor(1.0)))
                 .isInstanceOf(SimulationFailedException.class)
@@ -127,8 +129,8 @@ class JosimSimulatorProcessTest {
     private CircuitSimulator simulatorAcceptingWindow(double lower, double upper) throws IOException {
         String command = StubJosimLauncher.write(scriptDirectory, lower, upper);
         return new JosimSimulator(
-                new SimulatorProperties(command, "jsim", Duration.ofSeconds(60)),
-                new NetlistRenderer(), new JosimCsvReader(), new ProcessExecutor());
+                SimulatorLocation.found(SimulatorKind.JOSIM, Path.of(command), SimulatorLocation.Source.USER_SETTING),
+                Duration.ofSeconds(60), new NetlistRenderer(), new JosimCsvReader(), new ProcessExecutor());
     }
 
     private long temporaryWorkDirectories() throws IOException {

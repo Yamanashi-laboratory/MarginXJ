@@ -2,11 +2,12 @@ package com.ynu.marginx.infrastructure.simulator;
 
 import com.ynu.marginx.domain.model.circuit.Netlist;
 import com.ynu.marginx.domain.model.judge.SimulationResult;
-import com.ynu.marginx.infrastructure.config.SimulatorProperties;
+import com.ynu.marginx.infrastructure.config.SimulatorLocation;
 import com.ynu.marginx.infrastructure.netlist.JsimPrintDirectiveConverter;
 import com.ynu.marginx.infrastructure.netlist.NetlistRenderer;
 import com.ynu.marginx.infrastructure.result.JsimCsvReader;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -20,24 +21,17 @@ public final class JsimSimulator extends ExternalProcessSimulator {
 
     private static final String OUTPUT_FILE = "CIRCUIT.CSV";
 
-    private final SimulatorProperties properties;
     private final NetlistRenderer renderer;
     private final JsimPrintDirectiveConverter converter;
     private final JsimCsvReader reader;
 
-    public JsimSimulator(SimulatorProperties properties, NetlistRenderer renderer,
+    public JsimSimulator(SimulatorLocation location, Duration timeout, NetlistRenderer renderer,
                          JsimPrintDirectiveConverter converter, JsimCsvReader reader,
                          ProcessExecutor executor) {
-        super(executor, properties.timeout());
-        this.properties = properties;
+        super(executor, timeout, location);
         this.renderer = renderer;
         this.converter = converter;
         this.reader = reader;
-    }
-
-    @Override
-    public String name() {
-        return properties.jsimCommand();
     }
 
     @Override
