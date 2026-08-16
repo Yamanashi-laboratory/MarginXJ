@@ -38,6 +38,10 @@
 2. **シャント抵抗は素子の初期値から計算する** — 面積を掃引中でも、シャント抵抗は初期面積基準
    のまま（`make_cir.cpp` と同じ。
    [CircuitElement#renderShuntLine](src/main/java/com/ynu/marginx/domain/model/circuit/CircuitElement.java)）。
+3. **CGM の `lambda` は整数除算のまま** — `(MULTI_NUM - success) / MULTI_NUM` は success が 1 以上なら
+   常に 0 で、補正項が消えて「成功試行の重心」になります。これが手法名どおりの挙動なので、
+   実数除算に直してはいけません
+   （[CenterOfGravityOptimizer](src/main/java/com/ynu/marginx/domain/service/CenterOfGravityOptimizer.java)）。
 
 この種のコードに触れるときは、**なぜその形なのかを説明するコメントを必ず残してください。**
 既存のコメントを削らないでください。新たに同種の箇所を見つけたら、コメントを付けたうえで
@@ -54,6 +58,8 @@
 2. **コンデンサの素子種別** — C++ 版は `case 4`（C）で `ide_num` に 5（R）を格納していました。
 3. **電圧源の値** — C++ 版 `case 6` は消費済みの `stringstream` を再利用しており、PWL の途中の値を
    拾います。Java 版は電流源（`case 7`）と同じく、PWL 末尾の振幅を読みます。
+4. **CGM の最良回路の初期値** — C++ 版は `best_value` を全 0 で開始するため、スコアを一度も更新
+   できないと全パラメータ 0 の回路を返します。Java 版は入力回路を初期の最良として扱います。
 
 golden ファイルと数値比較して差分が出たときは、まずこの 3 点に該当しないかを確認してください。
 

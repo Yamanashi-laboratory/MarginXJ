@@ -74,10 +74,10 @@ C++ 版は中間ファイルを `MARGIN<pid>.cir` と PID で分離していま�
 | 1. ネットリスト・判定ファイルのパーサ | 完了 |
 | 2. JoSIM + 全探索マージン計算の縦串 | 完了 |
 | 3. 二分探索マージン計算 | 完了 |
-| 4. 同期探索（`calc_margin_syn`） | 未着手 |
-| 5. JSIM アダプタ | 未着手 |
-| 6. 最適化アルゴリズム群（CMM / CGM / 逐次 CGM） | 未着手 |
-| 7. matplotlib グラフ出力（`margin_py.cpp`） | 未着手 |
+| 4. 同期探索（`calc_margin_syn`） | 完了 |
+| 5. JSIM アダプタ | 完了 |
+| 6. 最適化アルゴリズム群（CMM / CGM / 逐次 CGM） | 完了 |
+| 7. グラフ出力（`margin_py.cpp` の matplotlib を JavaFX GUI に置き換え） | 未着手 |
 
 対話メニューには実装済みのモードのみを出しています。
 
@@ -90,6 +90,9 @@ golden ファイルと数値比較する際は、以下の 3 点で C++ 版と�
 2. **コンデンサの素子種別** — C++ 版は `case 4`（C）で `ide_num` に 5（R）を格納していました。
 3. **電圧源の値** — C++ 版 `case 6` は消費済みの `stringstream` を再利用しており、PWL の途中の値を拾います。
    Java 版は電流源（`case 7`）と同じく、PWL 末尾の振幅を読みます。
+4. **CGM の最良回路の初期値** — C++ 版は `best_value` を全 0・スコア 0 で開始するため、
+   一度もスコアを更新できなかった run は**全パラメータが 0 の回路**を返します。Java 版は入力回路を
+   初期の最良として扱うので、最悪でも入力がそのまま返ります。
 
 一方、**以下は元の挙動を保存**しています（結果が大きく変わるため）。
 
@@ -97,6 +100,12 @@ golden ファイルと数値比較する際は、以下の 3 点で C++ 版と�
   `judge_element()` が小文字しか判定しない仕様で、事実上「対象マーカー」として機能しています。
 - **シャント抵抗は素子の初期値から計算** — 面積を掃引中でもシャント抵抗は初期面積基準のまま
   （`make_cir.cpp` と同じ。`CircuitElement#renderShuntLine` にコメントあり）。
+- **CGM の `lambda` は整数除算** — `optimize_yield_up.cpp` の
+  `lambda = (MULTI_NUM - success) / MULTI_NUM` は int 同士の除算で、success が 1 以上なら必ず 0 です。
+  つまり補正項は常に消え、残るのは「正常動作した試行の重心」そのもの
+  （＝手法名どおりの挙動）。実数除算に"修正"すると別のアルゴリズムになるため保存しています。
+- **同期探索のメニュー表記** — 元コードのメニューは 4 番を "binary search with synchro" と表示しますが、
+  `main.cpp` は全探索ベースの `Margin_syn` を呼びます。移植はコード側に従っています。
 
 ## 配布と実行（利用者向け）
 
@@ -156,8 +165,11 @@ $env:MARGINX_JOSIM_COMMAND = "C:\tools\josim.exe"
 MARGINX_JSIM_COMMAND=/usr/local/bin/jsim MarginXJ test_JTL -m 2
 ```
 
-ただし **JSIM アダプタ自体は未実装です**（移植ステップ 5）。現時点で実際に呼び出せるのは
-JoSIM のみで、フォールバックは設計上の位置づけに留まります。
+JSIM 特有の癖は 2 点あり、いずれも実機の JSIM で確認したうえで吸収しています。
+デッキ全体を大文字化するため出力ファイル名も大文字になること（`.FILE CIRCUIT.CSV` と大文字で
+渡すことで一致させています）と、CSV にヘッダ行が無いことです。また JSIM は回路が発散した際に
+MSVC 形式の `-1.#IO` などを書きながら終了コード 0 を返すため、これらは非有限値として読み、
+その試行は「動作せず」と判定します。
 
 ## ビルドと実行（開発者向け）
 
@@ -202,23 +214,28 @@ JoSIM のコマンド名は設定で差し替えられます。
 
 ### 現在の検証状況
 
-配布方式を GraalVM Native Image から JavaFX + jpackage に切り替えた（[ADR 0001](docs/adr/0001-distribution-strategy.md)）
-直後のため、ビルド系で未検証の点がまとまって残っています。
+検証済み:
 
-検証済み: 切り替え前の構成での `./gradlew clean build` は BUILD SUCCESSFUL、テスト 33 件すべて通過。
+- `./gradlew clean build` は **BUILD SUCCESSFUL**、テスト **74 件すべて通過**（JDK 26、
+  実 JoSIM と実 JSIM を指定した状態で計測。指定が無い場合は IT 4 件がスキップされます）。
+  `org.openjfx.javafxplugin` 0.1.0 は Gradle 9 でも問題なく動作します。
+- **実 JoSIM 2.6.8 に対する `RealJosimIT` が通過。** かねてより未検証だった
+  「実 JoSIM が `.FILE` で出力先を決めるか」は**決める**ことを実測で確認しました。`-o` への変更は不要です。
+- **実 JSIM に対する `RealJsimIT` が通過。**
+- CMM（モード 5）は実 JoSIM で通しで動作し、`<回路名>_out.cir` を出力することを確認済み。
 
 未検証:
 
-- **JavaFX プラグイン導入後の `./gradlew build`。** 作業端末に JDK 21 が無く（JDK 11 のみ）、
-  Gradle 9.1 自体が起動しないため実行できていません。とくに
-  `org.openjfx.javafxplugin` 0.1.0 が Gradle 9 で削除された Convention API に依存していないかは
-  実行して確かめる必要があります。
 - **jpackage によるインストーラ生成。** `jpackage` タスクは雛形で、一度も成果物を出していません。
   Windows の WiX Toolset、Linux の `dpkg-deb` / `fakeroot` という前提も未確認です。
 - **GUI 実装後の起動可否。** 現在は fat jar をそのまま jpackage に渡しています。JavaFX の
   ネイティブライブラリが fat jar 経由で読めるか、`--module-path` や jlink ランタイムが要るかは
   GUI が入ってから確認します。
 - **リリース CI。** `.github/workflows/release.yml` は jpackage 前提に書き換えましたが未実行です。
+- **最適化モード（5/6/7）の実回路での収束。** 単体テストはスタブシミュレータに対する振る舞いで
+  固定しており、実 JoSIM で CGM を既定設定（500 サイクル × 100 試行）まで回した実績はありません。
+  乱数に依存するため C++ 版と数値が一致することは原理的にありません（元コード自身も
+  `random_device` で毎回異なる結果を出します）。
 
 ### トラブルシューティング: Windows で Gradle が起動しない場合
 
@@ -261,8 +278,14 @@ JAVA_TOOL_OPTIONS = -Djdk.net.unixdomain.tmpdir=%USERPROFILE%/.gradle/uds
 - `JudgementSpecParserTest` — 判定ファイルの解釈
 - `OperationJudgeTest` — 位相しきい値の判定と `anti` 反転
 - `MarginSearcherTest` — 既知の動作窓を返すダミーシミュレータに対し、両探索法が窓を当てられるか
-- `JosimSimulatorProcessTest` — **外部プロセスを実際に起動**する統合テスト（下記）
-- `RealJosimIT` — 実 JoSIM に対するテスト。既定ではスキップ
+- `CriticalMarginMethodTest` / `CenterOfGravityOptimizerTest` — 最適化アルゴリズム。乱数は
+  固定シードで与え、「窓の中央へ寄る」「入力より悪い回路を返さない」「`*FIX` を動かさない」など
+  シードに依存しない性質を検証
+- `JsimPrintDirectiveConverterTest` / `JsimCsvReaderTest` — JSIM 向けの変換と、ヘッダ無し CSV・
+  発散値（`-1.#IO`）の解釈
+- `JosimSimulatorProcessTest` / `JsimSimulatorProcessTest` — **外部プロセスを実際に起動**する統合テスト（下記）
+- `SimulatorSelectorTest` — JoSIM 優先・JSIM フォールバックの検出
+- `RealJosimIT` / `RealJsimIT` — 実シミュレータに対するテスト。既定ではスキップ
 
 ### 実シミュレータでのテスト
 
@@ -275,15 +298,12 @@ JoSIM 自体の物理計算以外は実物と同じ経路を通るため、次�
 - 中間ファイルの分離（32 並列で互いの値を踏まないこと）— PID 依存を排した箇所の回帰テスト
 - 実行後に作業ディレクトリが残らないこと、実行ファイルが無い場合にハングせず例外になること
 
-実物の JoSIM を使う場合はコマンドを指定します。指定が無ければ `RealJosimIT` はスキップされます。
+実物のシミュレータを使う場合はコマンドを指定します。指定が無ければ該当の IT はスキップされます。
 
 ```bash
-./gradlew test -Dmarginx.it.josim=josim
+./gradlew test -Dmarginx.it.josim=josim -Dmarginx.it.jsim=jsim
 ```
 
-未実施の確認事項が 1 点あります。この端末に JoSIM が無いため `RealJosimIT` は一度も実行できて
-おらず、**実 JoSIM が `.FILE` ディレクティブで出力先を決めるか**は未検証です（C++ 版がその前提で
-動いていたためそのまま移植しています）。もし出力が得られない場合は `JosimSimulator` を
-`-o <出力ファイル>` を渡す形に変える必要があります。
-
-JSIM については、アダプタ自体が未実装（移植ステップ 5）のため実行するものがありません。
+**実 JoSIM が `.FILE` ディレクティブで出力先を決めるか**は、かつて未検証事項でしたが、
+JoSIM 2.6.8 で**決めることを実測で確認済み**です（`.FILE` で指定した名前のファイルが作業ディレクトリに
+生成されます）。`-o` を渡す形への変更は不要でした。JSIM も同じく `.FILE` を尊重します。
