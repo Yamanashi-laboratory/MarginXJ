@@ -33,6 +33,39 @@ public final class CenterOfGravityOptimizer {
         }
     }
 
+    /**
+     * Which of the two CGM sources this run follows.
+     *
+     * <p>optimize_seq.cpp exists because its author suspected the forked version of racing on the
+     * shared opt_num, so it repeats the same search with the trials run one at a time. Candidates
+     * here are immutable and nothing is shared, so the port keeps the batching for both and takes
+     * only the two comparisons that genuinely differ.
+     */
+    public enum Variant {
+
+        /** optimize_yield_up.cpp. */
+        YIELD_UP {
+            @Override
+            boolean widensAt(int averageYield, int threshold) {
+                return averageYield >= threshold;
+            }
+        },
+
+        /**
+         * optimize_seq.cpp: the stall counter restarts whenever a cycle matches the best yield so
+         * far, and the spread only widens once the average is strictly above the threshold.
+         */
+        SEQUENTIAL {
+            @Override
+            boolean widensAt(int averageYield, int threshold) {
+                return averageYield > threshold;
+            }
+        };
+
+        /** Whether this cycle earns a wider spread. The variants differ only on the boundary. */
+        abstract boolean widensAt(int averageYield, int threshold);
+    }
+
     /** rand_global_yield() ignores its argument and always draws from N(1, 0.01). */
     private static final double GLOBAL_SPREAD = 0.01;
     private static final double SPREAD_STEP = 0.01;
@@ -43,10 +76,18 @@ public final class CenterOfGravityOptimizer {
     private final ScoreCalculator scores;
     private final RandomSource random;
     private final Settings settings;
+    private final Variant variant;
 
     public CenterOfGravityOptimizer(OperationSampler sampler, MarginTableCalculator margins,
                                     CriticalMarginCalculator criticalMargins, ScoreCalculator scores,
                                     RandomSource random, Settings settings) {
+        this(sampler, margins, criticalMargins, scores, random, settings, Variant.YIELD_UP);
+    }
+
+    public CenterOfGravityOptimizer(OperationSampler sampler, MarginTableCalculator margins,
+                                    CriticalMarginCalculator criticalMargins, ScoreCalculator scores,
+                                    RandomSource random, Settings settings, Variant variant) {
+        this.variant = variant;
         this.sampler = sampler;
         this.margins = margins;
         this.criticalMargins = criticalMargins;
@@ -68,6 +109,7 @@ public final class CenterOfGravityOptimizer {
 
         double spread = Math.round(criticalMargins.critical(table) / 2) / 100.0;
         int[] yields = new int[settings.yieldWindow()];
+        int bestYield = 0;
         int stalled = 0;
         int cycles = 0;
         StopReason reason = StopReason.TRIALS_EXHAUSTED;
@@ -98,9 +140,13 @@ public final class CenterOfGravityOptimizer {
             stalled++;
             if (success != 0) {
                 current = recentre(current, initial, sumOperating, sumFailing, success);
+                if (variant == Variant.SEQUENTIAL && success >= bestYield) {
+                    bestYield = success;
+                    stalled = 0;
+                }
             }
 
-            if (average(yields) >= settings.yieldThreshold()) {
+            if (variant.widensAt(average(yields), settings.yieldThreshold())) {
                 spread += SPREAD_STEP;
                 stalled = 0;
                 Arrays.fill(yields, 0);

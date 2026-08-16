@@ -107,8 +107,9 @@ public final class MarginXCommand implements Callable<Integer> {
             if (selected == OperationMode.OPTIMIZE_CRITICAL_MARGIN) {
                 return report(optimize(netlist, spec, evaluator, netlists, results));
             }
-            if (selected == OperationMode.OPTIMIZE_CENTER_OF_GRAVITY) {
-                return report(optimizeYield(netlist, spec, evaluator, netlists, results));
+            if (selected == OperationMode.OPTIMIZE_CENTER_OF_GRAVITY
+                    || selected == OperationMode.OPTIMIZE_SEQUENTIAL_CGM) {
+                return report(optimizeYield(selected, netlist, spec, evaluator, netlists, results));
             }
             return report(calculateMargins(netlist, spec, searcher(selected, evaluator), results));
         } catch (MarginXException e) {
@@ -137,10 +138,13 @@ public final class MarginXCommand implements Callable<Integer> {
                 .withCriticalMarginMethod(method, netlist, spec);
     }
 
-    private OptimizationOutcome optimizeYield(Netlist netlist, JudgementSpec spec,
+    private OptimizationOutcome optimizeYield(OperationMode selected, Netlist netlist, JudgementSpec spec,
                                               OperationEvaluator evaluator, NetlistRepository netlists,
                                               MarginResultRepository results) {
-        System.out.println(" ~ Center of Gravity Method ~");
+        boolean sequential = selected == OperationMode.OPTIMIZE_SEQUENTIAL_CGM;
+        System.out.println(sequential
+                ? " ~ Sequential Center of Gravity Method ~"
+                : " ~ Center of Gravity Method ~");
         ScoreChoice score = ScoreChoice.fromCode(scoreCode);
         System.out.println(" Score : " + score.label());
         CriticalMarginCalculator criticalMargins = new CriticalMarginCalculator();
@@ -148,7 +152,10 @@ public final class MarginXCommand implements Callable<Integer> {
                 new ParallelOperationSampler(evaluator),
                 measurement(new BinarySearchMarginSearcher(evaluator)), criticalMargins,
                 new ScoreCalculator(criticalMargins), RandomSource.unseeded(),
-                CenterOfGravityOptimizer.Settings.defaults());
+                CenterOfGravityOptimizer.Settings.defaults(),
+                sequential
+                        ? CenterOfGravityOptimizer.Variant.SEQUENTIAL
+                        : CenterOfGravityOptimizer.Variant.YIELD_UP);
         return new OptimizeCircuitUseCase(netlists, results)
                 .withCenterOfGravity(optimizer, netlist, spec, score.weights());
     }

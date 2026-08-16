@@ -22,7 +22,12 @@ import org.junit.jupiter.api.Test;
  */
 class CenterOfGravityOptimizerTest {
 
-    private static final Settings SMALL = new Settings(20, 20, 5, 60, 100);
+    /**
+     * Fewer cycles, but the full hundred trials each: the yield threshold is compared against the
+     * count of surviving trials, which only means "percent" because MULTI_NUM is 100. Shrinking the
+     * trial count would put the widening step out of reach and leave half the loop untested.
+     */
+    private static final Settings SMALL = new Settings(10, 100, 5, 60, 100);
 
     private final JudgementSpec spec = Circuits.singleWindow();
     private final ScoreWeights weights = ScoreWeights.criticalOnly();
@@ -70,11 +75,34 @@ class CenterOfGravityOptimizerTest {
                 .isEqualTo(outcome.netlist().element(1).value());
     }
 
+    @Test
+    void theSequentialVariantAlsoImprovesAnOffCentreCircuit() {
+        OptimizationOutcome outcome = optimizer(0.5, 1.5, 2024, CenterOfGravityOptimizer.Variant.SEQUENTIAL)
+                .optimize(Circuits.singleResistor(1.35), spec, weights);
+
+        double optimised = outcome.netlist().element(0).value();
+        assertThat(Math.abs(optimised - 1.0)).isLessThan(Math.abs(1.35 - 1.0));
+    }
+
+    @Test
+    void theTwoVariantsDifferOnTheWideningBoundary() {
+        // optimize_yield_up.cpp widens at the threshold, optimize_seq.cpp only past it. Everywhere
+        // else they agree, which is why a whole run can come out identical for both.
+        assertThat(CenterOfGravityOptimizer.Variant.YIELD_UP.widensAt(60, 60)).isTrue();
+        assertThat(CenterOfGravityOptimizer.Variant.SEQUENTIAL.widensAt(60, 60)).isFalse();
+        assertThat(CenterOfGravityOptimizer.Variant.SEQUENTIAL.widensAt(61, 60)).isTrue();
+    }
+
     private CenterOfGravityOptimizer optimizer(double lower, double upper, long seed) {
+        return optimizer(lower, upper, seed, CenterOfGravityOptimizer.Variant.YIELD_UP);
+    }
+
+    private CenterOfGravityOptimizer optimizer(double lower, double upper, long seed,
+                                               CenterOfGravityOptimizer.Variant variant) {
         return new CenterOfGravityOptimizer(
                 OperationSampler.sequential(evaluator(lower, upper)), margins(lower, upper),
                 new CriticalMarginCalculator(), new ScoreCalculator(new CriticalMarginCalculator()),
-                RandomSource.seeded(seed), SMALL);
+                RandomSource.seeded(seed), SMALL, variant);
     }
 
     private OperationEvaluator evaluator(double lower, double upper) {
