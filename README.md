@@ -100,50 +100,64 @@ golden ファイルと数値比較する際は、以下の 3 点で C++ 版と�
 
 ## 配布と実行（利用者向け）
 
-利用者に JDK を入れさせないため、GraalVM Native Image で **単一実行ファイル**を配布します。
-`v*` タグを push すると `.github/workflows/release.yml` が OS ごとにビルドし、Release に並べます。
+> [!IMPORTANT]
+> **動作には JoSIM のインストールが必須です。** MarginXJ は回路シミュレータそのものではなく、
+> JoSIM を外部プロセスとして呼び出してマージンを計算するツールです。
+> **JoSIM は MarginXJ に同梱されていません。**
+> [JoSIM の Releases](https://github.com/JoeyDelp/JoSIM/releases) から入手して
+> インストールしてください。同梱しない理由は
+> [ADR 0001](docs/adr/0001-distribution-strategy.md) に記録しています。
 
-| 配布物 | 対象 | 必要なもの |
+利用者に JDK を入れさせないため、Java ランタイムを同梱した OS ネイティブのインストーラを
+配布します。`v*` タグを push すると `.github/workflows/release.yml` が OS ごとにビルドし、
+Release に並べます。
+
+| 配布物 | 対象 | 導入方法 |
 |---|---|---|
-| `marginx-linux-x64` | Linux x86_64（glibc 2.35 以降） | なし |
-| `marginx-macos-arm64` / `marginx-macos-x64` | macOS | なし |
-| `marginx-windows-x64.exe` | Windows x86_64 | なし |
-| `marginx-all.jar` | 上記以外（Linux arm64 など） | JDK 21 以上 |
+| `MarginXJ-<version>.msi` | Windows x86_64 | ダブルクリックしてインストール |
+| `marginxj_<version>_amd64.deb` | Linux x86_64（Debian / Ubuntu 系） | `sudo apt install ./marginxj_<version>_amd64.deb` |
+| `marginxj-<os>-portable.zip` | Windows / Linux x86_64（インストールせずに使う場合） | 展開して中の起動ファイルを実行 |
 
-ダウンロードして実行するだけです。
+いずれも Java ランタイムを含むため、**JDK の導入は不要**です。
+portable zip は展開するだけで動きます（Windows は `MarginXJ.exe`、Linux は `bin/MarginXJ`）。
+
+macOS 向けの配布物と、x86_64 以外（Linux arm64 など）向けの配布物は現時点ではありません。
+これらの環境では「ビルドと実行（開発者向け）」の手順でソースからビルドしてください。
+
+### JoSIM の場所を教える
+
+JoSIM が PATH にあれば設定は不要です。PATH に無い場合、または特定のビルドを
+使いたい場合は、環境変数で場所を指定します。
+
+Linux:
 
 ```bash
-chmod +x marginx-linux-x64 && ./marginx-linux-x64 test_JTL -d -m 2
+MARGINX_JOSIM_COMMAND=/usr/local/bin/josim MarginXJ test_JTL -m 2
 ```
 
-JAR で使う場合。
+Windows (PowerShell):
+
+```
+$env:MARGINX_JOSIM_COMMAND = "C:\tools\josim.exe"
+```
+
+インストーラで導入した MarginXJ では、この環境変数が唯一の指定方法です。
+`-Dmarginx.josim.command=...` も同じ設定を指しますが、こちらは `java -jar` や
+`./gradlew run` で JVM を直接起動する場合にのみ有効です（インストール版の起動ファイルは
+コマンドライン引数をアプリケーションへ渡すため、`-D` は JVM に届きません）。
+
+### JSIM について
+
+**JSIM は JoSIM が見つからない場合の代替であり、必須ではありません。** JoSIM を検出できた
+場合は常に JoSIM を使います。JSIM も MarginXJ には同梱されないため、使う場合は利用者側で
+用意し、同じ方法で場所を指定します。
 
 ```bash
-java -jar marginx-all.jar test_JTL -d -m 2
+MARGINX_JSIM_COMMAND=/usr/local/bin/jsim MarginXJ test_JTL -m 2
 ```
 
-### 利用者側で残る前提
-
-- **JoSIM は別途必要です。** 本プログラムは JoSIM を外部プロセスとして起動する構成のため、
-  単一バイナリ化しても JoSIM 自体は同梱されません。PATH に無い場合は環境変数で場所を教えます。
-
-  ```bash
-  MARGINX_JOSIM_COMMAND=/usr/local/bin/josim ./marginx-linux-x64 test_JTL -m 2
-  ```
-
-  Windows (PowerShell) では次のとおりです。
-
-  ```
-  $env:MARGINX_JOSIM_COMMAND = "C:\tools\josim.exe"
-  ```
-
-  `-Dmarginx.josim.command=...` も従来どおり使えますが、ネイティブバイナリでは
-  **引数の先頭に置く**必要があります（実行時に JVM ではなくイメージ側が解釈するため）。
-  環境変数のほうが位置に依存せず確実です。
-
-- **署名していないバイナリです。** macOS では Gatekeeper に隔離されるため
-  `xattr -d com.apple.quarantine ./marginx-macos-arm64` が要ります。Windows では
-  SmartScreen の警告が出ます（「詳細情報」→「実行」）。
+ただし **JSIM アダプタ自体は未実装です**（移植ステップ 5）。現時点で実際に呼び出せるのは
+JoSIM のみで、フォールバックは設計上の位置づけに留まります。
 
 ## ビルドと実行（開発者向け）
 
@@ -156,22 +170,25 @@ JDK 21 以上が必要です（バイトコードは 21 固定）。
 `./gradlew build` は通常の JAR に加えて、依存を同梱した `build/libs/marginxj-<version>-all.jar`
 （`java -jar` で直接動く実行可能 JAR）も生成します。
 
-### ネイティブビルド
+### インストーラのビルド
 
-GraalVM で Gradle を動かした状態で実行します（`JAVA_HOME` が GraalVM を指していること）。
-成果物は `build/native/nativeCompile/marginx` です。
+インストーラは JDK 標準の jpackage で作ります。JDK 21 以上で Gradle を動かしていれば
+追加のツールチェーンは要りません。形式は Windows なら `.msi`、Linux なら `.deb` が既定で、
+出力先は `build/jpackage/<形式>/` です。
 
 ```bash
-./gradlew nativeCompile
+./gradlew jpackage
 ```
 
-picocli のリフレクション設定は `picocli-codegen` が JAR 内の `META-INF/native-image/` に
-生成するため、手書きのメタデータはありません。`application.properties` の同梱のみ
-`build.gradle.kts` の `resources.includedPatterns` で指定しています。
+portable zip の中身になる展開済みアプリは、形式を指定して生成します。
 
-**Windows でビルドする場合は Visual Studio 2022 (17.6 以降) の C++ ビルドツールが必須です。**
-未導入だと `Failed to find 'vswhere.exe'` で失敗します。導入せずに済ませたい場合は、
-ネイティブビルドは CI（GitHub Actions）に任せ、手元では `./gradlew build` の実行可能 JAR を使ってください。
+```bash
+./gradlew jpackage -Pjpackage.type=app-image
+```
+
+**Windows で `.msi` を作るには WiX Toolset v3 が必要です**（未導入だと jpackage が
+WiX を見つけられずに失敗します）。`app-image` の生成には不要です。Linux で `.deb` を
+作るには `dpkg-deb` と `fakeroot` が必要です。
 
 ```bash
 ./gradlew run --args="test_JTL -d -m 2"
@@ -183,11 +200,25 @@ JoSIM のコマンド名は設定で差し替えられます。
 ./gradlew test -Dmarginx.josim.command=/usr/local/bin/josim
 ```
 
-検証済み: `./gradlew clean build` が BUILD SUCCESSFUL、テスト 33 件すべて通過。
-`build/libs/marginxj-0.1.0-SNAPSHOT-all.jar` は `java -jar` で起動を確認済み。
+### 現在の検証状況
 
-未検証: ネイティブバイナリは開発端末に MSVC が無いため一度もビルドできておらず、
-GitHub Actions の初回実行が最初の検証になります。
+配布方式を GraalVM Native Image から JavaFX + jpackage に切り替えた（[ADR 0001](docs/adr/0001-distribution-strategy.md)）
+直後のため、ビルド系で未検証の点がまとまって残っています。
+
+検証済み: 切り替え前の構成での `./gradlew clean build` は BUILD SUCCESSFUL、テスト 33 件すべて通過。
+
+未検証:
+
+- **JavaFX プラグイン導入後の `./gradlew build`。** 作業端末に JDK 21 が無く（JDK 11 のみ）、
+  Gradle 9.1 自体が起動しないため実行できていません。とくに
+  `org.openjfx.javafxplugin` 0.1.0 が Gradle 9 で削除された Convention API に依存していないかは
+  実行して確かめる必要があります。
+- **jpackage によるインストーラ生成。** `jpackage` タスクは雛形で、一度も成果物を出していません。
+  Windows の WiX Toolset、Linux の `dpkg-deb` / `fakeroot` という前提も未確認です。
+- **GUI 実装後の起動可否。** 現在は fat jar をそのまま jpackage に渡しています。JavaFX の
+  ネイティブライブラリが fat jar 経由で読めるか、`--module-path` や jlink ランタイムが要るかは
+  GUI が入ってから確認します。
+- **リリース CI。** `.github/workflows/release.yml` は jpackage 前提に書き換えましたが未実行です。
 
 ### トラブルシューティング: Windows で Gradle が起動しない場合
 

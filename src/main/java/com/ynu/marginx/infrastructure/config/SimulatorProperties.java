@@ -42,8 +42,9 @@ public record SimulatorProperties(String josimCommand, String jsimCommand, Durat
         if (override != null) {
             return override;
         }
-        // A native image only honours -D when it precedes the application arguments, so the same
-        // override is accepted as an environment variable: marginx.josim.command -> MARGINX_JOSIM_COMMAND.
+        // The jpackage launcher hands its command line to the application, not to the JVM, so an
+        // installed build cannot take -D at all; the same override is accepted as an environment
+        // variable instead: marginx.josim.command -> MARGINX_JOSIM_COMMAND.
         String fromEnvironment = environment.apply(key.toUpperCase(Locale.ROOT).replace('.', '_'));
         if (fromEnvironment != null) {
             return fromEnvironment;

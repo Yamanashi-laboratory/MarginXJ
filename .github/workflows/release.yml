@@ -1,7 +1,8 @@
 name: release
 
-# native-image cannot cross-compile, so every OS/CPU we ship is built on its own runner.
-# Pushing a tag publishes the four binaries plus the runnable JAR as release assets.
+# jpackage cannot cross-compile, so each installer is built on the OS it targets.
+# Pushing a tag publishes the Windows .msi, the Linux .deb and a portable zip per OS.
+# Neither JoSIM nor JSIM is bundled - see docs/adr/0001-distribution-strategy.md.
 on:
   push:
     tags:
@@ -9,83 +10,74 @@ on:
   workflow_dispatch:
 
 jobs:
-  native:
+  installer:
     name: ${{ matrix.asset }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Linux stays off the newest runner so the binary links against an older glibc.
+          # Linux stays off the newest runner so the bundled runtime links against an older glibc.
           - os: ubuntu-22.04
-            asset: marginx-linux-x64
-          - os: macos-13
-            asset: marginx-macos-x64
-          - os: macos-14
-            asset: marginx-macos-arm64
+            asset: linux-x64
           - os: windows-2022
-            asset: marginx-windows-x64.exe
+            asset: windows-x64
     steps:
       - uses: actions/checkout@v4
 
-      # On Windows this action also sets up the MSVC developer environment native-image needs.
-      - uses: graalvm/setup-graalvm@v1
-        with:
-          java-version: '21'
-          distribution: 'graalvm-community'
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          cache: 'gradle'
-
-      - name: Build native image
-        shell: bash
-        run: ./gradlew nativeCompile
-
-      - name: Stage binary
-        shell: bash
-        run: |
-          mkdir -p dist
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            cp build/native/nativeCompile/marginx.exe "dist/${{ matrix.asset }}"
-          else
-            cp build/native/nativeCompile/marginx "dist/${{ matrix.asset }}"
-            chmod +x "dist/${{ matrix.asset }}"
-          fi
-
-      # Confirm the image at least starts before it ships.
-      - name: Smoke test
-        shell: bash
-        run: ./dist/${{ matrix.asset }} --version
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.asset }}
-          path: dist/${{ matrix.asset }}
-          if-no-files-found: error
-
-  jar:
-    name: marginx-all.jar
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
           cache: 'gradle'
-      - name: Build fat jar
-        run: ./gradlew build
-      - name: Stage jar
+
+      # jpackage shells out to WiX for the .msi. The app-image build does not need it.
+      - name: Install WiX
+        if: runner.os == 'Windows'
+        run: choco install wixtoolset --no-progress -y
+
+      # A tag of v0.2.0 ships as version 0.2.0; without this the hardcoded version would be used.
+      - name: Resolve version
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          case "$GITHUB_REF_NAME" in
+            v*) ;;
+            *) version=0.0.0 ;;
+          esac
+          echo "MARGINX_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Build installer
+        shell: bash
+        run: ./gradlew jpackage -Pversion="$MARGINX_VERSION"
+
+      - name: Build portable image
+        shell: bash
+        run: ./gradlew jpackage -Pjpackage.type=app-image -Pversion="$MARGINX_VERSION"
+
+      - name: Stage assets (Linux)
+        if: runner.os == 'Linux'
         run: |
           mkdir -p dist
-          cp build/libs/*-all.jar dist/marginx-all.jar
+          cp build/jpackage/deb/*.deb dist/
+          (cd build/jpackage/app-image && zip -qr "$GITHUB_WORKSPACE/dist/marginxj-${{ matrix.asset }}-portable.zip" .)
+
+      - name: Stage assets (Windows)
+        shell: pwsh
+        if: runner.os == 'Windows'
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item build/jpackage/msi/*.msi dist/
+          Compress-Archive -Path build/jpackage/app-image/* -DestinationPath "dist/marginxj-${{ matrix.asset }}-portable.zip"
+
       - uses: actions/upload-artifact@v4
         with:
-          name: marginx-all.jar
-          path: dist/marginx-all.jar
+          name: ${{ matrix.asset }}
+          path: dist/*
           if-no-files-found: error
 
   publish:
-    needs: [native, jar]
+    needs: [installer]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:

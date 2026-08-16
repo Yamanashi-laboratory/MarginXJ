@@ -1,11 +1,12 @@
 plugins {
     application
     java
-    alias(libs.plugins.graalvm.native)
+    alias(libs.plugins.openjfx)
 }
 
 group = "com.ynu"
-version = "0.1.0-SNAPSHOT"
+// Overridable so a tagged CI build can stamp the installer: ./gradlew jpackage -Pversion=0.2.0
+version = (findProperty("version") as String?)?.takeUnless { it == "unspecified" } ?: "0.1.0-SNAPSHOT"
 
 // Runs on any JDK 21+; bytecode is pinned to 21 so the workplace toolchain can consume it.
 
@@ -26,6 +27,18 @@ dependencies {
 
 application {
     mainClass = "com.ynu.marginx.presentation.MarginXCommand"
+}
+
+// The GUI (netlist editor and margin chart) is built on JavaFX; the plugin resolves the
+// platform-specific artifacts for whichever machine runs the build.
+// Read through the catalog API rather than the libs.versions.* accessor: inside this script the
+// accessor resolves against the extension container the JavaFX plugin adds and fails to compile.
+val javafxVersion = the<VersionCatalogsExtension>().named("libs")
+    .findVersion("openjfx").orElseThrow().requiredVersion
+
+javafx {
+    version = javafxVersion
+    modules("javafx.controls", "javafx.fxml")
 }
 
 tasks.withType<JavaCompile>().configureEach {
@@ -49,27 +62,8 @@ tasks.named<JavaExec>("run") {
     standardInput = System.`in`
 }
 
-// Distributable 1: a single executable, so users need no JRE. picocli-codegen already emits the
-// reflection metadata into META-INF/native-image, leaving only our own resource to declare.
-graalvmNative {
-    // Use whichever JDK runs Gradle (it must be a GraalVM); toolchain resolution is brittle here.
-    toolchainDetection = false
-    binaries {
-        named("main") {
-            imageName = "marginx"
-            // SimulatorProperties.load() reads this through getResourceAsStream. Left out of the
-            // image it would silently degrade to the hardcoded defaults.
-            resources.includedPatterns.add("application\\.properties")
-            buildArgs.addAll(
-                // The default target assumes recent CPU instructions; stay portable instead.
-                "-march=compatibility",
-            )
-        }
-    }
-}
-
-// Distributable 2: a runnable JAR. Native images need a machine per OS, so this covers the
-// platforms CI does not build (Linux arm64 and the like) for anyone with a JDK 21+.
+// Distributable 1: a runnable JAR, for anyone with a JDK 21+ and for platforms we ship no
+// installer for. It also feeds jpackage below.
 val fatJar = tasks.register<Jar>("fatJar") {
     archiveClassifier = "all"
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
@@ -86,4 +80,61 @@ val fatJar = tasks.register<Jar>("fatJar") {
 
 tasks.named("assemble") {
     dependsOn(fatJar)
+}
+
+// Distributable 2: an OS-native installer with a bundled runtime, so users need no JDK.
+// Neither JoSIM nor JSIM is bundled - see docs/adr/0001-distribution-strategy.md.
+//
+// Skeleton for now: it has never produced an installer. Once the JavaFX GUI lands, check whether
+// the fat jar alone is enough or whether the JavaFX native libraries need --module-path / jlink.
+
+// jpackage copies every jar in --input, so stage the fat jar on its own.
+val jpackageInput = tasks.register<Sync>("jpackageInput") {
+    from(fatJar)
+    into(layout.buildDirectory.dir("jpackage/input"))
+}
+
+tasks.register<Exec>("jpackage") {
+    group = "distribution"
+    description = "Builds an installer (.msi on Windows, .deb on Linux) around the fat jar."
+    dependsOn(jpackageInput)
+
+    val operatingSystem = System.getProperty("os.name").lowercase()
+    val windows = operatingSystem.startsWith("windows")
+    val defaultType = when {
+        windows -> "msi"
+        operatingSystem.startsWith("mac") -> "dmg"
+        else -> "deb"
+    }
+    // -Pjpackage.type=app-image produces the unpacked application CI zips as the portable build.
+    val type = (findProperty("jpackage.type") as String? ?: defaultType)
+
+    // jpackage ships with the JDK that runs Gradle, which must therefore be 21+.
+    val jpackageTool = File(System.getProperty("java.home"), "bin/jpackage" + if (windows) ".exe" else "")
+    executable = jpackageTool.absolutePath
+
+    val inputDir = layout.buildDirectory.dir("jpackage/input").get().asFile
+    val outputDir = layout.buildDirectory.dir("jpackage/$type").get().asFile
+    outputs.dir(outputDir)
+
+    argumentProviders.add(CommandLineArgumentProvider {
+        outputDir.mkdirs()
+        buildList {
+            addAll(listOf("--type", type))
+            addAll(listOf("--name", "MarginXJ"))
+            // MSI rejects a qualifier such as -SNAPSHOT: the version must be numeric.
+            addAll(listOf("--app-version", version.toString().substringBefore('-')))
+            addAll(listOf("--input", inputDir.absolutePath))
+            addAll(listOf("--main-jar", fatJar.get().archiveFileName.get()))
+            addAll(listOf("--main-class", application.mainClass.get()))
+            addAll(listOf("--dest", outputDir.absolutePath))
+            if (type == "msi") {
+                // Keep the launcher attached to a console while the CLI is the primary entry point.
+                add("--win-console")
+                add("--win-dir-chooser")
+                // Stable across releases, otherwise every MSI installs alongside the previous one.
+                addAll(listOf("--win-upgrade-uuid", "4f18fd88-60c1-4655-9e0d-4792021cb2ee"))
+            }
+        }
+    })
 }
