@@ -9,7 +9,8 @@ public enum OperationMode {
     MARGIN_EXHAUSTIVE(2, "Calculate Margin (accurately)"),
     MARGIN_BINARY(3, "Calculate Margin (binary search)"),
     MARGIN_SYNCHRONIZED(4, "Calculate Margin (synchronised groups)"),
-    OPTIMIZE_CRITICAL_MARGIN(5, "Optimization with Critical Margin Method");
+    OPTIMIZE_CRITICAL_MARGIN(5, "Optimization with Critical Margin Method"),
+    OPTIMIZE_CENTER_OF_GRAVITY(6, "Optimization with Center of Gravity Method (CGM)");
 
     private final int code;
     private final String label;

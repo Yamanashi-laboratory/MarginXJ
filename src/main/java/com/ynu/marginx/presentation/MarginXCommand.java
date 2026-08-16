@@ -4,6 +4,7 @@ import com.ynu.marginx.application.CalculateMarginUseCase;
 import com.ynu.marginx.application.ProgressListener;
 import com.ynu.marginx.application.JudgeOperationUseCase;
 import com.ynu.marginx.application.OptimizeCircuitUseCase;
+import com.ynu.marginx.application.ParallelOperationSampler;
 import com.ynu.marginx.domain.model.circuit.Netlist;
 import com.ynu.marginx.domain.model.judge.JudgementOutcome;
 import com.ynu.marginx.domain.model.judge.JudgementSpec;
@@ -15,12 +16,16 @@ import com.ynu.marginx.domain.port.MarginResultRepository;
 import com.ynu.marginx.domain.port.NetlistRepository;
 import com.ynu.marginx.domain.service.BinarySearchMarginSearcher;
 import com.ynu.marginx.domain.service.CriticalElementFinder;
+import com.ynu.marginx.domain.service.CenterOfGravityOptimizer;
+import com.ynu.marginx.domain.service.CriticalMarginCalculator;
 import com.ynu.marginx.domain.service.CriticalMarginMethod;
 import com.ynu.marginx.domain.service.ExhaustiveMarginSearcher;
 import com.ynu.marginx.domain.service.MarginSearcher;
 import com.ynu.marginx.domain.service.MarginTableCalculator;
 import com.ynu.marginx.domain.service.OperationEvaluator;
 import com.ynu.marginx.domain.service.OperationJudge;
+import com.ynu.marginx.domain.service.RandomSource;
+import com.ynu.marginx.domain.service.ScoreCalculator;
 import com.ynu.marginx.infrastructure.config.SimulatorProperties;
 import com.ynu.marginx.infrastructure.judgement.FileJudgementSpecRepository;
 import com.ynu.marginx.infrastructure.judgement.JudgementSpecParser;
@@ -61,6 +66,11 @@ public final class MarginXCommand implements Callable<Integer> {
     @Option(names = {"-m", "--mode"}, description = "Skip the interactive menu and run this mode.")
     private Integer mode;
 
+    @Option(names = {"-s", "--score"},
+            description = "What an optimisation maximises: 1 critical, 2 bias, 3 upper, 4 lower,"
+                    + " 5 critical+bias, 6 critical+2*bias. Defaults to 1.")
+    private int scoreCode = 1;
+
     public static void main(String[] args) {
         System.exit(new CommandLine(new MarginXCommand()).execute(args));
     }
@@ -97,6 +107,9 @@ public final class MarginXCommand implements Callable<Integer> {
             if (selected == OperationMode.OPTIMIZE_CRITICAL_MARGIN) {
                 return report(optimize(netlist, spec, evaluator, netlists, results));
             }
+            if (selected == OperationMode.OPTIMIZE_CENTER_OF_GRAVITY) {
+                return report(optimizeYield(netlist, spec, evaluator, netlists, results));
+            }
             return report(calculateMargins(netlist, spec, searcher(selected, evaluator), results));
         } catch (MarginXException e) {
             System.err.println(" ERROR : " + e.getMessage());
@@ -120,8 +133,24 @@ public final class MarginXCommand implements Callable<Integer> {
         MarginTableCalculator refined = measurement(new BinarySearchMarginSearcher(evaluator));
         CriticalMarginMethod method =
                 new CriticalMarginMethod(initial, refined, new CriticalElementFinder());
-        return new OptimizeCircuitUseCase(method, netlists, results)
-                .withCriticalMarginMethod(netlist, spec);
+        return new OptimizeCircuitUseCase(netlists, results)
+                .withCriticalMarginMethod(method, netlist, spec);
+    }
+
+    private OptimizationOutcome optimizeYield(Netlist netlist, JudgementSpec spec,
+                                              OperationEvaluator evaluator, NetlistRepository netlists,
+                                              MarginResultRepository results) {
+        System.out.println(" ~ Center of Gravity Method ~");
+        ScoreChoice score = ScoreChoice.fromCode(scoreCode);
+        System.out.println(" Score : " + score.label());
+        CriticalMarginCalculator criticalMargins = new CriticalMarginCalculator();
+        CenterOfGravityOptimizer optimizer = new CenterOfGravityOptimizer(
+                new ParallelOperationSampler(evaluator),
+                measurement(new BinarySearchMarginSearcher(evaluator)), criticalMargins,
+                new ScoreCalculator(criticalMargins), RandomSource.unseeded(),
+                CenterOfGravityOptimizer.Settings.defaults());
+        return new OptimizeCircuitUseCase(netlists, results)
+                .withCenterOfGravity(optimizer, netlist, spec, score.weights());
     }
 
     /** Every re-measurement inside an optimisation loop runs the elements in parallel too. */
@@ -155,6 +184,7 @@ public final class MarginXCommand implements Callable<Integer> {
             case SAME_CRITICAL_ELEMENT -> "the same element came up critical again";
             case CRITICAL_ELEMENT_IS_FIXED -> "the critical element is marked *FIX";
             case NOTHING_TO_OPTIMIZE -> "no element could be measured";
+            case YIELD_STALLED -> "the yield stopped improving";
             case TRIALS_EXHAUSTED -> "the trial limit was reached";
         };
     }

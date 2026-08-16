@@ -18,6 +18,8 @@ public record OptimizationOutcome(Netlist netlist, MarginTable margins, int tria
         /** The critical element is marked *FIX and must not be moved. */
         CRITICAL_ELEMENT_IS_FIXED,
         /** No element could be measured at all. */
-        NOTHING_TO_OPTIMIZE
+        NOTHING_TO_OPTIMIZE,
+        /** The yield stopped improving for long enough that the run gave up - not_upd in the C++. */
+        YIELD_STALLED
     }
 }

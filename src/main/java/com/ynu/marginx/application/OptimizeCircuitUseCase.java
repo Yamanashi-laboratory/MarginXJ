@@ -3,8 +3,10 @@ package com.ynu.marginx.application;
 import com.ynu.marginx.domain.model.circuit.Netlist;
 import com.ynu.marginx.domain.model.judge.JudgementSpec;
 import com.ynu.marginx.domain.model.optimize.OptimizationOutcome;
+import com.ynu.marginx.domain.model.optimize.ScoreWeights;
 import com.ynu.marginx.domain.port.MarginResultRepository;
 import com.ynu.marginx.domain.port.NetlistRepository;
+import com.ynu.marginx.domain.service.CenterOfGravityOptimizer;
 import com.ynu.marginx.domain.service.CriticalMarginMethod;
 
 /**
@@ -14,19 +16,22 @@ import com.ynu.marginx.domain.service.CriticalMarginMethod;
  */
 public final class OptimizeCircuitUseCase {
 
-    private final CriticalMarginMethod criticalMarginMethod;
     private final NetlistRepository netlists;
     private final MarginResultRepository results;
 
-    public OptimizeCircuitUseCase(CriticalMarginMethod criticalMarginMethod, NetlistRepository netlists,
-                                  MarginResultRepository results) {
-        this.criticalMarginMethod = criticalMarginMethod;
+    public OptimizeCircuitUseCase(NetlistRepository netlists, MarginResultRepository results) {
         this.netlists = netlists;
         this.results = results;
     }
 
-    public OptimizationOutcome withCriticalMarginMethod(Netlist netlist, JudgementSpec spec) {
-        return record(netlist.baseName(), criticalMarginMethod.optimize(netlist, spec));
+    public OptimizationOutcome withCriticalMarginMethod(CriticalMarginMethod method, Netlist netlist,
+                                                        JudgementSpec spec) {
+        return record(netlist.baseName(), method.optimize(netlist, spec));
+    }
+
+    public OptimizationOutcome withCenterOfGravity(CenterOfGravityOptimizer optimizer, Netlist netlist,
+                                                   JudgementSpec spec, ScoreWeights weights) {
+        return record(netlist.baseName(), optimizer.optimize(netlist, spec, weights));
     }
 
     private OptimizationOutcome record(String baseName, OptimizationOutcome outcome) {
