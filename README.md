@@ -98,13 +98,80 @@ golden ファイルと数値比較する際は、以下の 3 点で C++ 版と�
 - **シャント抵抗は素子の初期値から計算** — 面積を掃引中でもシャント抵抗は初期面積基準のまま
   （`make_cir.cpp` と同じ。`CircuitElement#renderShuntLine` にコメントあり）。
 
-## ビルドと実行
+## 配布と実行（利用者向け）
+
+利用者に JDK を入れさせないため、GraalVM Native Image で **単一実行ファイル**を配布します。
+`v*` タグを push すると `.github/workflows/release.yml` が OS ごとにビルドし、Release に並べます。
+
+| 配布物 | 対象 | 必要なもの |
+|---|---|---|
+| `marginx-linux-x64` | Linux x86_64（glibc 2.35 以降） | なし |
+| `marginx-macos-arm64` / `marginx-macos-x64` | macOS | なし |
+| `marginx-windows-x64.exe` | Windows x86_64 | なし |
+| `marginx-all.jar` | 上記以外（Linux arm64 など） | JDK 21 以上 |
+
+ダウンロードして実行するだけです。
+
+```bash
+chmod +x marginx-linux-x64 && ./marginx-linux-x64 test_JTL -d -m 2
+```
+
+JAR で使う場合。
+
+```bash
+java -jar marginx-all.jar test_JTL -d -m 2
+```
+
+### 利用者側で残る前提
+
+- **JoSIM は別途必要です。** 本プログラムは JoSIM を外部プロセスとして起動する構成のため、
+  単一バイナリ化しても JoSIM 自体は同梱されません。PATH に無い場合は環境変数で場所を教えます。
+
+  ```bash
+  MARGINX_JOSIM_COMMAND=/usr/local/bin/josim ./marginx-linux-x64 test_JTL -m 2
+  ```
+
+  Windows (PowerShell) では次のとおりです。
+
+  ```
+  $env:MARGINX_JOSIM_COMMAND = "C:\tools\josim.exe"
+  ```
+
+  `-Dmarginx.josim.command=...` も従来どおり使えますが、ネイティブバイナリでは
+  **引数の先頭に置く**必要があります（実行時に JVM ではなくイメージ側が解釈するため）。
+  環境変数のほうが位置に依存せず確実です。
+
+- **署名していないバイナリです。** macOS では Gatekeeper に隔離されるため
+  `xattr -d com.apple.quarantine ./marginx-macos-arm64` が要ります。Windows では
+  SmartScreen の警告が出ます（「詳細情報」→「実行」）。
+
+## ビルドと実行（開発者向け）
 
 JDK 21 以上が必要です（バイトコードは 21 固定）。
 
 ```bash
 ./gradlew build
 ```
+
+`./gradlew build` は通常の JAR に加えて、依存を同梱した `build/libs/marginxj-<version>-all.jar`
+（`java -jar` で直接動く実行可能 JAR）も生成します。
+
+### ネイティブビルド
+
+GraalVM で Gradle を動かした状態で実行します（`JAVA_HOME` が GraalVM を指していること）。
+成果物は `build/native/nativeCompile/marginx` です。
+
+```bash
+./gradlew nativeCompile
+```
+
+picocli のリフレクション設定は `picocli-codegen` が JAR 内の `META-INF/native-image/` に
+生成するため、手書きのメタデータはありません。`application.properties` の同梱のみ
+`build.gradle.kts` の `resources.includedPatterns` で指定しています。
+
+**Windows でビルドする場合は Visual Studio 2022 (17.6 以降) の C++ ビルドツールが必須です。**
+未導入だと `Failed to find 'vswhere.exe'` で失敗します。導入せずに済ませたい場合は、
+ネイティブビルドは CI（GitHub Actions）に任せ、手元では `./gradlew build` の実行可能 JAR を使ってください。
 
 ```bash
 ./gradlew run --args="test_JTL -d -m 2"
@@ -116,7 +183,11 @@ JoSIM のコマンド名は設定で差し替えられます。
 ./gradlew test -Dmarginx.josim.command=/usr/local/bin/josim
 ```
 
-検証済み: `./gradlew clean build` が BUILD SUCCESSFUL、テスト 30 件すべて通過。
+検証済み: `./gradlew clean build` が BUILD SUCCESSFUL、テスト 33 件すべて通過。
+`build/libs/marginxj-0.1.0-SNAPSHOT-all.jar` は `java -jar` で起動を確認済み。
+
+未検証: ネイティブバイナリは開発端末に MSVC が無いため一度もビルドできておらず、
+GitHub Actions の初回実行が最初の検証になります。
 
 ### トラブルシューティング: Windows で Gradle が起動しない場合
 
