@@ -9,9 +9,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Stream;
 
 /**
  * Shared plumbing for the simulators we drive as external processes. Each run gets its own
@@ -71,6 +69,7 @@ abstract sealed class ExternalProcessSimulator implements CircuitSimulator
             throw new SimulationFailedException(location.reason());
         }
         Path workDirectory = createWorkDirectory();
+        SimulatorWorkspaces.opened(workDirectory);
         try {
             Files.write(workDirectory.resolve(NETLIST_FILE), render(netlist, outputFileName()));
             executor.run(List.of(name(), NETLIST_FILE), workDirectory, timeout);
@@ -78,7 +77,8 @@ abstract sealed class ExternalProcessSimulator implements CircuitSimulator
         } catch (IOException e) {
             throw new SimulationFailedException("Cannot write the intermediate netlist", e);
         } finally {
-            deleteRecursively(workDirectory);
+            SimulatorWorkspaces.delete(workDirectory);
+            SimulatorWorkspaces.closed(workDirectory);
         }
     }
 
@@ -95,20 +95,6 @@ abstract sealed class ExternalProcessSimulator implements CircuitSimulator
             return Files.createTempDirectory("marginx-");
         } catch (IOException e) {
             throw new SimulationFailedException("Cannot create a working directory for the simulator", e);
-        }
-    }
-
-    private void deleteRecursively(Path directory) {
-        try (Stream<Path> paths = Files.walk(directory)) {
-            paths.sorted(Comparator.reverseOrder()).forEach(path -> {
-                try {
-                    Files.deleteIfExists(path);
-                } catch (IOException ignored) {
-                    // A leftover temp file must not fail the margin run.
-                }
-            });
-        } catch (IOException ignored) {
-            // Same reasoning: cleanup is best effort.
         }
     }
 }

@@ -37,11 +37,13 @@ import com.ynu.marginx.infrastructure.result.FileMarginResultRepository;
 import com.ynu.marginx.infrastructure.simulator.ProcessExecutor;
 import com.ynu.marginx.infrastructure.config.UserSimulatorSettings;
 import com.ynu.marginx.infrastructure.simulator.SimulatorRegistry;
+import com.ynu.marginx.infrastructure.simulator.SimulatorWorkspaces;
 import com.ynu.marginx.presentation.view.DetailView;
 import com.ynu.marginx.presentation.view.MarginChartView;
 import com.ynu.marginx.presentation.view.ProgressBarView;
 import com.ynu.marginx.shared.exception.MarginXException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Locale;
 import java.util.concurrent.Callable;
 import picocli.CommandLine;
@@ -82,6 +84,11 @@ public final class MarginXCommand implements Callable<Integer> {
             description = "Remember this JSIM executable for future runs, then exit.")
     private String jsimPath;
 
+    private static final Duration SHUTDOWN_GRACE = Duration.ofSeconds(10);
+
+    /** The calculation the shutdown hook should stop, if any is running. */
+    private volatile CalculateMarginUseCase active;
+
     @Option(names = {"-s", "--score"},
             description = "What an optimisation maximises: 1 critical, 2 bias, 3 upper, 4 lower,"
                     + " 5 critical+bias, 6 critical+2*bias. Defaults to 1.")
@@ -107,8 +114,10 @@ public final class MarginXCommand implements Callable<Integer> {
             }
             // JoSIM when it is installed, JSIM only when it is not: neither ships with MarginXJ.
             // Selecting inside the try keeps a missing simulator on the same one-line error path.
+            ProcessExecutor executor = new ProcessExecutor();
+            installShutdownHook(executor);
             SimulatorRegistry registry = new SimulatorRegistry(properties, userSettings,
-                    new NetlistRenderer(), new ProcessExecutor());
+                    new NetlistRenderer(), executor);
             SimulatorRegistry.Selection selection = registry.resolve(choice());
             CircuitSimulator chosen = selection.simulator();
             if (selection.fallback()) {
@@ -214,14 +223,40 @@ public final class MarginXCommand implements Callable<Integer> {
 
     /** Every re-measurement inside an optimisation loop runs the elements in parallel too. */
     private MarginTableCalculator measurement(MarginSearcher searcher) {
-        return (netlist, spec) -> new CalculateMarginUseCase(searcher, MarginResultRepository.NONE)
+        return (netlist, spec) -> track(new CalculateMarginUseCase(searcher, MarginResultRepository.NONE))
                 .execute(netlist, spec, ProgressListener.NOOP);
+    }
+
+    /**
+     * Remembers the calculation now in progress so the shutdown hook can stop it. An optimisation
+     * builds a fresh one for every re-measurement, so this is set repeatedly during a long run.
+     */
+    private CalculateMarginUseCase track(CalculateMarginUseCase useCase) {
+        active = useCase;
+        return useCase;
+    }
+
+    /**
+     * Ctrl+C has to leave the machine as tidy as the cancel button does: stop the run, let the
+     * workers kill their simulators, then sweep up any working directory whose thread never got
+     * the chance to. A hook is the only place that can happen - the JVM is on its way out.
+     */
+    private void installShutdownHook(ProcessExecutor executor) {
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            CalculateMarginUseCase running = active;
+            if (running != null) {
+                running.cancel();
+                running.awaitTermination(SHUTDOWN_GRACE);
+            }
+            executor.destroyLiveProcesses();
+            SimulatorWorkspaces.deleteRemaining();
+        }, "marginx-shutdown"));
     }
 
     private MarginTable calculateMargins(Netlist netlist, JudgementSpec spec, MarginSearcher searcher,
                                          MarginResultRepository results) {
         System.out.println(" Calculating Margins...");
-        return new CalculateMarginUseCase(searcher, results)
+        return track(new CalculateMarginUseCase(searcher, results))
                 .execute(netlist, spec, new ProgressBarView(System.out));
     }
 

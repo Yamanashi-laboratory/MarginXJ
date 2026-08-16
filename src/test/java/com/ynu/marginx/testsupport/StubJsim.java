@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
  * {@code .FILE} name is written back upper-cased, and the CSV has no header row and is separated by
  * spaces rather than commas.
  *
- * <p>Usage: {@code StubJsim <lower> <upper> <netlist file>}
+ * <p>Usage: {@code StubJsim <lower> <upper> <delay millis> <netlist file>}
  */
 public final class StubJsim {
 
@@ -33,10 +33,15 @@ public final class StubJsim {
     private StubJsim() {
     }
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws IOException, InterruptedException {
         double lower = Double.parseDouble(args[0]);
         double upper = Double.parseDouble(args[1]);
-        Path netlist = Path.of(args[2]);
+        long delayMillis = Long.parseLong(args[2]);
+        Path netlist = Path.of(args[3]);
+
+        if (delayMillis > 0) {
+            Thread.sleep(delayMillis);
+        }
 
         List<String> lines = Files.readAllLines(netlist);
         double resistance = extract(lines);

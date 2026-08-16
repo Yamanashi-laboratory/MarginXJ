@@ -17,7 +17,8 @@ import java.util.regex.Pattern;
  * its working directory, honours the {@code .FILE} directive, and writes a JoSIM-shaped CSV whose
  * waveform depends on the swept resistor value.
  *
- * <p>Usage: {@code StubJosim <lower> <upper> <netlist file>}
+ * <p>Usage: {@code StubJosim <lower> <upper> <delay millis> <netlist file>}. The delay is there so
+ * a test can cancel a run while a simulator is genuinely mid-flight.
  */
 public final class StubJosim {
 
@@ -32,10 +33,15 @@ public final class StubJosim {
     private StubJosim() {
     }
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws IOException, InterruptedException {
         double lower = Double.parseDouble(args[0]);
         double upper = Double.parseDouble(args[1]);
-        Path netlist = Path.of(args[2]);
+        long delayMillis = Long.parseLong(args[2]);
+        Path netlist = Path.of(args[3]);
+
+        if (delayMillis > 0) {
+            Thread.sleep(delayMillis);
+        }
 
         List<String> lines = Files.readAllLines(netlist);
         double resistance = extract(lines, RESISTANCE);

@@ -22,6 +22,12 @@ public final class StubJosimLauncher {
 
     public static String write(Path directory, Class<?> stubClass, double lower, double upper)
             throws IOException {
+        return write(directory, stubClass, lower, upper, 0);
+    }
+
+    /** A delay of more than zero keeps the stub alive long enough to be cancelled mid-run. */
+    public static String write(Path directory, Class<?> stubClass, double lower, double upper,
+                               long delayMillis) throws IOException {
         boolean windows = System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win");
         String java = Path.of(System.getProperty("java.home"), "bin", windows ? "java.exe" : "java").toString();
         String classpath = System.getProperty("java.class.path");
@@ -31,11 +37,11 @@ public final class StubJosimLauncher {
         Path script = directory.resolve(windows ? name + ".bat" : name + ".sh");
         List<String> lines = windows
                 ? List.of("@echo off",
-                          String.format(Locale.ROOT, "\"%s\" -cp \"%s\" %s %s %s %%1",
-                                  java, classpath, stub, lower, upper))
+                          String.format(Locale.ROOT, "\"%s\" -cp \"%s\" %s %s %s %s %%1",
+                                  java, classpath, stub, lower, upper, delayMillis))
                 : List.of("#!/bin/sh",
-                          String.format(Locale.ROOT, "exec \"%s\" -cp \"%s\" %s %s %s \"$1\"",
-                                  java, classpath, stub, lower, upper));
+                          String.format(Locale.ROOT, "exec \"%s\" -cp \"%s\" %s %s %s %s \"$1\"",
+                                  java, classpath, stub, lower, upper, delayMillis));
         Files.write(script, lines);
         if (!windows) {
             script.toFile().setExecutable(true);

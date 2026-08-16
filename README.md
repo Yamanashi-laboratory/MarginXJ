@@ -36,7 +36,7 @@ com.ynu.marginx
 │   │                       JsimPrintDirectiveConverter
 │   ├─ judgement/           JudgementSpecParser, FileJudgementSpecRepository
 │   ├─ simulator/           ExternalProcessSimulator → JosimSimulator / JsimSimulator
-│   │                       SimulatorRegistry, ProcessExecutor
+│   │                       SimulatorRegistry, ProcessExecutor, SimulatorWorkspaces
 │   ├─ result/              JosimCsvReader, JsimCsvReader, FileMarginResultRepository
 │   └─ config/              SimulatorProperties, SimulatorKind,
 │                           SimulatorLocation, UserSimulatorSettings
@@ -273,13 +273,15 @@ JoSIM のコマンド名は設定で差し替えられます。
 
 検証済み:
 
-- `./gradlew clean build` は **BUILD SUCCESSFUL**、テスト **90 件すべて通過**（JDK 26、
+- `./gradlew clean build` は **BUILD SUCCESSFUL**、テスト **95 件すべて通過**（JDK 26、
   実 JoSIM と実 JSIM を指定した状態で計測。指定が無い場合は IT 4 件がスキップされます）。
   `org.openjfx.javafxplugin` 0.1.0 は Gradle 9 でも問題なく動作します。
 - **実 JoSIM 2.6.8 に対する `RealJosimIT` が通過。** かねてより未検証だった
   「実 JoSIM が `.FILE` で出力先を決めるか」は**決める**ことを実測で確認しました。`-o` への変更は不要です。
 - **実 JSIM に対する `RealJsimIT` が通過。**
 - CMM（モード 5）は実 JoSIM で通しで動作し、`<回路名>_out.cir` を出力することを確認済み。
+- **Ctrl+C による中断。** 計算中に実際のコンソール制御イベントを送り、5 個開いていた作業ディレクトリが
+  0 になること、シミュレータのプロセス（ラッパー経由の孫プロセスを含む）が残らないことを実測しました。
 
 未検証:
 
@@ -345,6 +347,8 @@ JAVA_TOOL_OPTIONS = -Djdk.net.unixdomain.tmpdir=%USERPROFILE%/.gradle/uds
   一般的インストール先）と、明示指定が解決できない場合にフォールバックせず失敗すること
 - `SimulatorRegistryTest` — JoSIM のみ / JSIM のみ / 両方 / どちらも無し / 明示指定 の選択
 - `FileMarginResultRepositoryTest` — 結果ファイル先頭の出所記録と、データ行の形式が変わらないこと
+- `CancellationTest` — 中断してもシミュレータのプロセスと一時ディレクトリが残らないこと、
+  素子ごとの進捗が通知されること。スタブに遅延を入れ、シミュレーション実行中に中断させて検証
 - `RealJosimIT` / `RealJsimIT` — 実シミュレータに対するテスト。既定ではスキップ
 
 ### 実シミュレータでのテスト
