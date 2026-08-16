@@ -23,9 +23,8 @@ import com.ynu.marginx.infrastructure.netlist.FileNetlistRepository;
 import com.ynu.marginx.infrastructure.netlist.NetlistParser;
 import com.ynu.marginx.infrastructure.netlist.NetlistRenderer;
 import com.ynu.marginx.infrastructure.result.FileMarginResultRepository;
-import com.ynu.marginx.infrastructure.result.JosimCsvReader;
-import com.ynu.marginx.infrastructure.simulator.JosimSimulator;
 import com.ynu.marginx.infrastructure.simulator.ProcessExecutor;
+import com.ynu.marginx.infrastructure.simulator.SimulatorSelector;
 import com.ynu.marginx.presentation.view.DetailView;
 import com.ynu.marginx.presentation.view.MarginChartView;
 import com.ynu.marginx.presentation.view.ProgressBarView;
@@ -70,11 +69,14 @@ public final class MarginXCommand implements Callable<Integer> {
         JudgementSpecRepository specs =
                 new FileJudgementSpecRepository(workingDirectory, new JudgementSpecParser());
         MarginResultRepository results = new FileMarginResultRepository(workingDirectory);
-        CircuitSimulator simulator = new JosimSimulator(
-                properties, new NetlistRenderer(), new JosimCsvReader(), new ProcessExecutor());
-        OperationEvaluator evaluator = new OperationEvaluator(simulator, new OperationJudge());
 
         try {
+            // JoSIM when it is installed, JSIM only when it is not: neither ships with MarginXJ.
+            // Selecting inside the try keeps a missing simulator on the same one-line error path.
+            CircuitSimulator simulator = new SimulatorSelector(
+                    properties, new NetlistRenderer(), new ProcessExecutor()).select();
+            OperationEvaluator evaluator = new OperationEvaluator(simulator, new OperationJudge());
+
             Netlist netlist = netlists.load(circuit);
             JudgementSpec spec = specs.load(judgement != null ? judgement : circuit);
             System.out.printf(" Sum of Target      : %d%n", netlist.elementCount());

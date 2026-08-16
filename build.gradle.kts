@@ -53,7 +53,8 @@ tasks.test {
         events("passed", "failed", "skipped")
     }
     // Forward simulator locations to the test JVM: RealJosimIT stays skipped unless one is given.
-    listOf("marginx.it.josim", "marginx.josim.command").forEach { key ->
+    listOf("marginx.it.josim", "marginx.it.jsim",
+            "marginx.josim.command", "marginx.jsim.command").forEach { key ->
         System.getProperty(key)?.let { systemProperty(key, it) }
     }
 }
