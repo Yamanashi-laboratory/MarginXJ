@@ -1,19 +1,24 @@
 package com.ynu.marginx.presentation;
 
 import com.ynu.marginx.application.CalculateMarginUseCase;
+import com.ynu.marginx.application.ProgressListener;
 import com.ynu.marginx.application.JudgeOperationUseCase;
+import com.ynu.marginx.application.OptimizeCircuitUseCase;
 import com.ynu.marginx.domain.model.circuit.Netlist;
 import com.ynu.marginx.domain.model.judge.JudgementOutcome;
 import com.ynu.marginx.domain.model.judge.JudgementSpec;
 import com.ynu.marginx.domain.model.margin.MarginTable;
+import com.ynu.marginx.domain.model.optimize.OptimizationOutcome;
 import com.ynu.marginx.domain.port.CircuitSimulator;
 import com.ynu.marginx.domain.port.JudgementSpecRepository;
 import com.ynu.marginx.domain.port.MarginResultRepository;
 import com.ynu.marginx.domain.port.NetlistRepository;
 import com.ynu.marginx.domain.service.BinarySearchMarginSearcher;
 import com.ynu.marginx.domain.service.CriticalElementFinder;
+import com.ynu.marginx.domain.service.CriticalMarginMethod;
 import com.ynu.marginx.domain.service.ExhaustiveMarginSearcher;
 import com.ynu.marginx.domain.service.MarginSearcher;
+import com.ynu.marginx.domain.service.MarginTableCalculator;
 import com.ynu.marginx.domain.service.OperationEvaluator;
 import com.ynu.marginx.domain.service.OperationJudge;
 import com.ynu.marginx.infrastructure.config.SimulatorProperties;
@@ -89,6 +94,9 @@ public final class MarginXCommand implements Callable<Integer> {
             if (selected == OperationMode.JUDGE) {
                 return report(new JudgeOperationUseCase(evaluator).execute(netlist, spec));
             }
+            if (selected == OperationMode.OPTIMIZE_CRITICAL_MARGIN) {
+                return report(optimize(netlist, spec, evaluator, netlists, results));
+            }
             return report(calculateMargins(netlist, spec, searcher(selected, evaluator), results));
         } catch (MarginXException e) {
             System.err.println(" ERROR : " + e.getMessage());
@@ -104,6 +112,24 @@ public final class MarginXCommand implements Callable<Integer> {
         };
     }
 
+    private OptimizationOutcome optimize(Netlist netlist, JudgementSpec spec, OperationEvaluator evaluator,
+                                         NetlistRepository netlists, MarginResultRepository results) {
+        System.out.println(" ~ Critical Margin Method ~");
+        // The C++ tool measures once with the exhaustive search and re-measures with the binary one.
+        MarginTableCalculator initial = measurement(new ExhaustiveMarginSearcher(evaluator));
+        MarginTableCalculator refined = measurement(new BinarySearchMarginSearcher(evaluator));
+        CriticalMarginMethod method =
+                new CriticalMarginMethod(initial, refined, new CriticalElementFinder());
+        return new OptimizeCircuitUseCase(method, netlists, results)
+                .withCriticalMarginMethod(netlist, spec);
+    }
+
+    /** Every re-measurement inside an optimisation loop runs the elements in parallel too. */
+    private MarginTableCalculator measurement(MarginSearcher searcher) {
+        return (netlist, spec) -> new CalculateMarginUseCase(searcher, MarginResultRepository.NONE)
+                .execute(netlist, spec, ProgressListener.NOOP);
+    }
+
     private MarginTable calculateMargins(Netlist netlist, JudgementSpec spec, MarginSearcher searcher,
                                          MarginResultRepository results) {
         System.out.println(" Calculating Margins...");
@@ -117,6 +143,20 @@ public final class MarginXCommand implements Callable<Integer> {
             new DetailView(System.out).print(table);
         }
         return 0;
+    }
+
+    private int report(OptimizationOutcome outcome) {
+        System.out.printf(" Stopped after %d trial(s): %s%n", outcome.trials(), explain(outcome.reason()));
+        return report(outcome.margins());
+    }
+
+    private String explain(OptimizationOutcome.StopReason reason) {
+        return switch (reason) {
+            case SAME_CRITICAL_ELEMENT -> "the same element came up critical again";
+            case CRITICAL_ELEMENT_IS_FIXED -> "the critical element is marked *FIX";
+            case NOTHING_TO_OPTIMIZE -> "no element could be measured";
+            case TRIALS_EXHAUSTED -> "the trial limit was reached";
+        };
     }
 
     private int report(JudgementOutcome outcome) {
