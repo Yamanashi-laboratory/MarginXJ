@@ -7,7 +7,8 @@ public enum OperationMode {
 
     JUDGE(1, "Judge operation"),
     MARGIN_EXHAUSTIVE(2, "Calculate Margin (accurately)"),
-    MARGIN_BINARY(3, "Calculate Margin (binary search)");
+    MARGIN_BINARY(3, "Calculate Margin (binary search)"),
+    MARGIN_SYNCHRONIZED(4, "Calculate Margin (synchronised groups)");
 
     private final int code;
     private final String label;

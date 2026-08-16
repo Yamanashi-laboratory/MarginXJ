@@ -97,9 +97,11 @@ public final class MarginXCommand implements Callable<Integer> {
     }
 
     private MarginSearcher searcher(OperationMode selected, OperationEvaluator evaluator) {
-        return selected == OperationMode.MARGIN_BINARY
-                ? new BinarySearchMarginSearcher(evaluator)
-                : new ExhaustiveMarginSearcher(evaluator);
+        return switch (selected) {
+            case MARGIN_BINARY -> new BinarySearchMarginSearcher(evaluator);
+            case MARGIN_SYNCHRONIZED -> ExhaustiveMarginSearcher.synchronizingGroups(evaluator);
+            default -> new ExhaustiveMarginSearcher(evaluator);
+        };
     }
 
     private MarginTable calculateMargins(Netlist netlist, JudgementSpec spec, MarginSearcher searcher,

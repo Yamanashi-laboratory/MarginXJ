@@ -9,6 +9,10 @@ import com.ynu.marginx.domain.model.margin.Margin;
 /**
  * Widens the parameter one decade at a time and refines the step four times, the behaviour of
  * calc_margin/margin_ele.cpp.
+ *
+ * <p>In synchronised mode the candidate value is applied to the target's whole synchronisation
+ * group instead of the target alone. That is the only difference between margin_ele.cpp and
+ * margin_ele_syn.cpp, which is why this is a mode rather than a second algorithm.
  */
 public final class ExhaustiveMarginSearcher implements MarginSearcher {
 
@@ -17,9 +21,20 @@ public final class ExhaustiveMarginSearcher implements MarginSearcher {
     private static final double LOWER_FLOOR = 0.001;
 
     private final OperationEvaluator evaluator;
+    private final boolean synchronizeGroups;
 
     public ExhaustiveMarginSearcher(OperationEvaluator evaluator) {
+        this(evaluator, false);
+    }
+
+    private ExhaustiveMarginSearcher(OperationEvaluator evaluator, boolean synchronizeGroups) {
         this.evaluator = evaluator;
+        this.synchronizeGroups = synchronizeGroups;
+    }
+
+    /** The searcher behind menu option 4, Margin_syn in the C++ tool. */
+    public static ExhaustiveMarginSearcher synchronizingGroups(OperationEvaluator evaluator) {
+        return new ExhaustiveMarginSearcher(evaluator, true);
     }
 
     @Override
@@ -110,7 +125,10 @@ public final class ExhaustiveMarginSearcher implements MarginSearcher {
     }
 
     private boolean operates(Netlist netlist, int index, JudgementSpec spec, double value) {
-        return evaluator.operatesCorrectly(netlist.withElementValue(index, value), spec);
+        Netlist candidate = synchronizeGroups
+                ? netlist.withSynchronizedValue(index, value)
+                : netlist.withElementValue(index, value);
+        return evaluator.operatesCorrectly(candidate, spec);
     }
 
     static int orderOfMagnitude(double value) {
@@ -119,6 +137,8 @@ public final class ExhaustiveMarginSearcher implements MarginSearcher {
 
     @Override
     public String description() {
-        return "exhaustive (decade refinement)";
+        return synchronizeGroups
+                ? "exhaustive (decade refinement, synchronised groups)"
+                : "exhaustive (decade refinement)";
     }
 }

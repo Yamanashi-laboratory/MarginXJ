@@ -7,6 +7,7 @@ import com.ynu.marginx.domain.model.circuit.Netlist;
 import com.ynu.marginx.domain.model.judge.JudgementSpec;
 import com.ynu.marginx.domain.model.margin.Margin;
 import com.ynu.marginx.testsupport.Circuits;
+import com.ynu.marginx.testsupport.MatchedPairSimulator;
 import com.ynu.marginx.testsupport.WindowSimulator;
 import org.junit.jupiter.api.Test;
 
@@ -50,6 +51,35 @@ class MarginSearcherTest {
         Margin margin = search(new BinarySearchMarginSearcher(evaluator(0.5, 1.5)), Circuits.singleResistor(0.0));
 
         assertThat(margin).isEqualTo(Margin.none());
+    }
+
+    @Test
+    void synchronisedSearchMovesTheWholeGroup() {
+        Margin margin = new ExhaustiveMarginSearcher(pairEvaluator(0.5, 1.5))
+                .search(Circuits.synchronizedPair(1.0), 0, spec);
+
+        // Without synchronisation the pair falls out of step immediately, so nothing widens.
+        assertThat(margin.lowerPercent()).isCloseTo(0, within(0.001));
+        assertThat(margin.upperPercent()).isCloseTo(0, within(0.001));
+
+        Margin synchronised = ExhaustiveMarginSearcher.synchronizingGroups(pairEvaluator(0.5, 1.5))
+                .search(Circuits.synchronizedPair(1.0), 0, spec);
+
+        assertThat(synchronised.lowerPercent()).isCloseTo(-50, within(1.0));
+        assertThat(synchronised.upperPercent()).isCloseTo(50, within(1.0));
+    }
+
+    @Test
+    void anUngroupedElementIsUnaffectedBySynchronisation() {
+        Margin margin = ExhaustiveMarginSearcher.synchronizingGroups(evaluator(0.5, 1.5))
+                .search(Circuits.singleResistor(1.0), 0, spec);
+
+        assertThat(margin.lowerPercent()).isCloseTo(-50, within(1.0));
+        assertThat(margin.upperPercent()).isCloseTo(50, within(1.0));
+    }
+
+    private OperationEvaluator pairEvaluator(double lower, double upper) {
+        return new OperationEvaluator(new MatchedPairSimulator(lower, upper), new OperationJudge());
     }
 
     private Margin search(MarginSearcher searcher, Netlist netlist) {
