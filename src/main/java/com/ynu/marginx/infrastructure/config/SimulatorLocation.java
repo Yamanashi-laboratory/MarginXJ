@@ -69,6 +69,19 @@ public record SimulatorLocation(SimulatorKind kind, Optional<Path> executable, S
     static SimulatorLocation resolve(SimulatorKind kind, UserSimulatorSettings settings,
                                      UnaryOperator<String> environment, UnaryOperator<String> systemProperties,
                                      String operatingSystem) {
+        return resolve(kind, settings, environment, systemProperties, operatingSystem,
+                kind.installDirectories(operatingSystem, environment));
+    }
+
+    /**
+     * The directories to scan are a parameter rather than a lookup so a test can point them
+     * somewhere harmless. On Linux the real ones are /usr/local/bin and /usr/bin: a test that used
+     * them would be writing to system directories, and would find whatever the machine happens to
+     * have installed instead of what the test set up.
+     */
+    static SimulatorLocation resolve(SimulatorKind kind, UserSimulatorSettings settings,
+                                     UnaryOperator<String> environment, UnaryOperator<String> systemProperties,
+                                     String operatingSystem, List<String> installDirectories) {
         // Steps 1 to 3 are the user saying which executable to use. If one of them is set but does
         // not resolve, that is an error rather than a reason to carry on looking: quietly running
         // some other copy found on PATH is exactly the kind of surprise this class exists to avoid.
@@ -94,7 +107,8 @@ public record SimulatorLocation(SimulatorKind kind, Optional<Path> executable, S
         if (onPath.isPresent()) {
             return found(kind, onPath.get(), Source.PATH);
         }
-        Optional<Path> installed = searchInstallDirectories(kind, environment, operatingSystem);
+        Optional<Path> installed =
+                searchInstallDirectories(kind, installDirectories, environment, operatingSystem);
         if (installed.isPresent()) {
             return found(kind, installed.get(), Source.INSTALL_DIRECTORY);
         }
@@ -141,9 +155,10 @@ public record SimulatorLocation(SimulatorKind kind, Optional<Path> executable, S
         return Optional.empty();
     }
 
-    private static Optional<Path> searchInstallDirectories(SimulatorKind kind, UnaryOperator<String> environment,
+    private static Optional<Path> searchInstallDirectories(SimulatorKind kind, List<String> directories,
+                                                           UnaryOperator<String> environment,
                                                            String operatingSystem) {
-        for (String directory : kind.installDirectories(operatingSystem, environment)) {
+        for (String directory : directories) {
             Optional<Path> candidate = in(directory, kind.command(), environment, operatingSystem);
             if (candidate.isPresent()) {
                 return candidate;

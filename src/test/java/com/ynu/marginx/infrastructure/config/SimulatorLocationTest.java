@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Locale;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -69,8 +70,7 @@ class SimulatorLocationTest {
         Path fromProperty = install(onPath, "josim");
         environment.put(SimulatorKind.JOSIM.environmentVariable(), fromEnvironment.toString());
 
-        SimulatorLocation location = SimulatorLocation.resolve(SimulatorKind.JOSIM, settings,
-                environment::get, key -> fromProperty.toString(), OS);
+        SimulatorLocation location = resolve(SimulatorKind.JOSIM, key -> fromProperty.toString());
 
         assertThat(location.executable()).contains(fromEnvironment);
         assertThat(location.source()).isEqualTo(SimulatorLocation.Source.ENVIRONMENT);
@@ -82,9 +82,8 @@ class SimulatorLocationTest {
         install(onPath, "josim");
         environment.put("PATH", onPath.toString());
 
-        SimulatorLocation location = SimulatorLocation.resolve(SimulatorKind.JOSIM, settings,
-                environment::get, key -> SimulatorKind.JOSIM.systemProperty().equals(key)
-                        ? fromProperty.toString() : null, OS);
+        SimulatorLocation location = resolve(SimulatorKind.JOSIM,
+                key -> SimulatorKind.JOSIM.systemProperty().equals(key) ? fromProperty.toString() : null);
 
         assertThat(location.executable()).contains(fromProperty);
         assertThat(location.source()).isEqualTo(SimulatorLocation.Source.SYSTEM_PROPERTY);
@@ -150,11 +149,8 @@ class SimulatorLocationTest {
 
     @Test
     void aStandardInstallDirectoryIsTheLastResort() throws IOException {
-        // Nothing configured and nothing on PATH, but the usual install location has it.
-        Path directory = SimulatorKind.JOSIM.installDirectories(OS, environment::get).stream()
-                .map(Path::of)
-                .findFirst()
-                .orElseThrow();
+        // Nothing configured and nothing on PATH, but the scanned location has it.
+        Path directory = installRoot.resolve("opt");
         Files.createDirectories(directory);
         Path executable = install(directory, "josim");
 
@@ -165,18 +161,39 @@ class SimulatorLocationTest {
     }
 
     @Test
+    void looksInThePlacesEachPlatformInstallsInto() {
+        // The list itself, without touching the filesystem.
+        List<String> windows = SimulatorKind.JOSIM.installDirectories("Windows 11", environment::get);
+        assertThat(windows).anyMatch(directory -> directory.contains("Program Files"));
+
+        List<String> linux = SimulatorKind.JOSIM.installDirectories("Linux", environment::get);
+        assertThat(linux).contains("/usr/local/bin", "/usr/bin");
+
+        List<String> mac = SimulatorKind.JSIM.installDirectories("Mac OS X", environment::get);
+        assertThat(mac).contains("/usr/local/bin", "/opt/homebrew/bin");
+    }
+
+    @Test
     void theSeparatorForPathEntriesIsThePlatformOne() throws IOException {
         Path executable = install(onPath, "jsim");
         environment.put("PATH", preferred + File.pathSeparator + onPath);
 
-        SimulatorLocation location = SimulatorLocation.resolve(SimulatorKind.JSIM, settings,
-                environment::get, key -> null, OS);
+        SimulatorLocation location = resolve(SimulatorKind.JSIM, key -> null);
 
         assertThat(location.executable()).contains(executable);
     }
 
     private SimulatorLocation resolve() {
-        return SimulatorLocation.resolve(SimulatorKind.JOSIM, settings, environment::get, key -> null, OS);
+        return resolve(SimulatorKind.JOSIM, key -> null);
+    }
+
+    /**
+     * Always scans a temp directory rather than the machine. On Linux the real list starts at
+     * /usr/local/bin and /usr/bin, which a test must neither write to nor be at the mercy of.
+     */
+    private SimulatorLocation resolve(SimulatorKind kind, java.util.function.UnaryOperator<String> properties) {
+        return SimulatorLocation.resolve(kind, settings, environment::get, properties, OS,
+                List.of(installRoot.resolve("opt").toString()));
     }
 
     private Path install(Path directory, String command) throws IOException {
