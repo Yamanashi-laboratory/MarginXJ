@@ -139,9 +139,12 @@ tasks.register<Exec>("jpackage") {
             addAll(listOf("--main-jar", fatJar.get().archiveFileName.get()))
             addAll(listOf("--main-class", application.mainClass.get()))
             addAll(listOf("--dest", outputDir.absolutePath))
-            if (type == "msi") {
-                // Keep the launcher attached to a console while the CLI is the primary entry point.
+            if (windows) {
+                // MarginXJ is a command-line tool as much as a window: without a console the
+                // launcher would swallow everything the CLI prints, and every startup error too.
                 add("--win-console")
+            }
+            if (type == "msi") {
                 add("--win-dir-chooser")
                 // Stable across releases, otherwise every MSI installs alongside the previous one.
                 addAll(listOf("--win-upgrade-uuid", "4f18fd88-60c1-4655-9e0d-4792021cb2ee"))

@@ -14,7 +14,8 @@ com.ynu.marginx
 │   ├─ cli/                   MarginXCommand, InteractiveMenu, OperationMode, ScoreChoice
 │   │   └─ view/              ProgressBarView, MarginChartView, DetailView
 │   └─ gui/                   MarginXFxApplication, MainWindow
-│       ├─ editor/            NetlistHighlighter, NetlistEditor (RichTextFX)
+│       ├─ editor/            NetlistHighlighter, NetlistEditor, NetlistValidator,
+│       │                    ElementListView, EditorPane (RichTextFX)
 │       ├─ result/            MarginChartData, MarginChartView, MarginTableView
 │       ├─ task/              MarginCalculationTask
 │       └─ export/            ResultExporter (PNG / CSV)
@@ -172,13 +173,19 @@ MarginXJ
 - **使用中のシミュレータ**を常時表示します。JSIM に切り替わっている場合は警告色になり、
   理由がツールチップで出ます。
 - **エクスポート** — グラフは PNG、結果は CSV（CLI と同じ形式・同じ出所コメント付き）。
-- **Netlist タブ**に選んだ回路を表示します。素子行・ドットコマンド・MarginX 独自ディレクティブ
-  （`*MIN` `*MAX` `*FIX` `*SYN` `*LMIN` などと、シャント行の `*SHUNT` `*Bc` `*calc`）・コメントを
-  色分けします。ハイライトが認識する素子記号は `ElementType` から導いており、パーサと語彙がずれません。
+- **Netlist タブ**は回路と判定ファイルを左右に並べて編集でき、右に素子一覧が出ます。
+  - 素子行・ドットコマンド・MarginX 独自ディレクティブ（`*MIN` `*MAX` `*FIX` `*SYN` `*LMIN` などと、
+    シャント行の `*SHUNT` `*Bc` `*calc`）・コメントを色分けします。認識する素子記号は `ElementType`
+    から導いており、パーサと語彙がずれません。
+  - 入力が止まると `NetlistParser` を呼んで検証します。**エディタ専用の構文解析は持ちません**
+    （「エディタでは通るのに実行するとエラー」を原理的に排除するため）。失敗した行は赤で示します。
+  - **マージン対象の素子行に色を付けます。** 対象かどうかはパーサが返した素子の行番号から決めており、
+    「小文字始まりだけが対象」という分かりにくい規則が画面上で見えます。
+  - 素子一覧の行をクリックすると該当行へ移動します。
+  - 判定ファイルは回路と同じベース名（`adder.cir` なら `adder.txt`）に固定され、保存時もその名前です。
+    計算が探す名前と食い違う保存はできません。
 
-このバージョンの GUI はマージン計算（3 モード）の表示と、ネットリストの色分け表示までです。
-エディタの構文検証・素子一覧・マージン対象の明示・judgement の同時編集は未実装で、
-最適化モードは CLI から使えます。
+最適化モード（CMM / CGM / 逐次 CGM）は CLI から使います。
 
 ### シミュレータの場所
 
@@ -302,7 +309,7 @@ JoSIM のコマンド名は設定で差し替えられます。
 
 検証済み:
 
-- `./gradlew clean build` は **BUILD SUCCESSFUL**、テスト **113 件すべて通過**（JDK 26、
+- `./gradlew clean build` は **BUILD SUCCESSFUL**、テスト **130 件すべて通過**（JDK 26、
   実 JoSIM と実 JSIM を指定した状態で計測。指定が無い場合は IT 4 件がスキップされます）。
   `org.openjfx.javafxplugin` 0.1.0 は Gradle 9 でも問題なく動作します。
 - **実 JoSIM 2.6.8 に対する `RealJosimIT` が通過。** かねてより未検証だった
@@ -311,16 +318,19 @@ JoSIM のコマンド名は設定で差し替えられます。
 - CMM（モード 5）は実 JoSIM で通しで動作し、`<回路名>_out.cir` を出力することを確認済み。
 - **GUI。** 引数なし / `--gui` のいずれでもウィンドウが開くこと、CLI が従来どおり動くことを実測。
   実 JoSIM で測ったマージンを本番のチャートに描かせ、PNG / CSV 出力まで確認しました。
+- **jpackage の成果物（app-image）。** 生成した実行ファイルで、同梱ランタイムのみ（JDK なし）で
+  CLI が `test_circuits/MUX_clked.cir` を判定できること、`--gui` でウィンドウが開くことを確認しました。
+  JavaFX は fat jar 経由で読み込めており、`--module-path` や jlink ランタイムは不要でした。
+- **エディタ。** 実回路 `MUX_clked.cir`（サブ回路・`*SYN`・範囲ディレクティブを含む）で、
+  33 個のマージン対象の検出、対象行の強調、素子一覧、判定ファイルの同時表示を確認しました。
 - **Ctrl+C による中断。** 計算中に実際のコンソール制御イベントを送り、5 個開いていた作業ディレクトリが
   0 になること、シミュレータのプロセス（ラッパー経由の孫プロセスを含む）が残らないことを実測しました。
 
 未検証:
 
-- **jpackage によるインストーラ生成。** `jpackage` タスクは雛形で、一度も成果物を出していません。
-  Windows の WiX Toolset、Linux の `dpkg-deb` / `fakeroot` という前提も未確認です。
-- **GUI 実装後の起動可否。** 現在は fat jar をそのまま jpackage に渡しています。JavaFX の
-  ネイティブライブラリが fat jar 経由で読めるか、`--module-path` や jlink ランタイムが要るかは
-  GUI が入ってから確認します。
+- **`.msi` の生成。** WiX Toolset v3 が必要で、作業端末に未導入のため未検証です（CI は choco で
+  導入します）。`app-image` の生成には不要で、そちらは検証済みです。
+- **`.deb` の生成**（`dpkg-deb` / `fakeroot` が必要）。Linux 実機がないため未検証です。
 - **リリース CI。** `.github/workflows/release.yml` は jpackage 前提に書き換えましたが未実行です。
 - **最適化モード（5/6/7）の実回路での収束。** 単体テストはスタブシミュレータに対する振る舞いで
   固定しており、実 JoSIM で CGM を既定設定（500 サイクル × 100 試行）まで回した実績はありません。
@@ -378,6 +388,8 @@ JAVA_TOOL_OPTIONS = -Djdk.net.unixdomain.tmpdir=%USERPROFILE%/.gradle/uds
   一般的インストール先）と、明示指定が解決できない場合にフォールバックせず失敗すること
 - `SimulatorRegistryTest` — JoSIM のみ / JSIM のみ / 両方 / どちらも無し / 明示指定 の選択
 - `FileMarginResultRepositoryTest` — 結果ファイル先頭の出所記録と、データ行の形式が変わらないこと
+- `NetlistValidatorTest` / `EditorPaneTest` — エディタの検証・対象行の印・保存。
+  `test_circuits/MUX_clked.cir`（実回路）に対して、対象 33 個の検出と行番号の一致を確認
 - `NetlistHighlighterTest` — 色分けの規則。素子記号は `ElementType` 全種を走査し、
   `*MIN` のようなディレクティブと単なるコメントの区別を固定。JavaFX 非依存
 - `MarginChartDataTest` — グラフの軸範囲・並び順・棒の幅。JavaFX に依存しない純粋なクラス
