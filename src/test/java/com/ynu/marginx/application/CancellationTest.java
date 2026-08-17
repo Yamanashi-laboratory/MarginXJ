@@ -27,10 +27,13 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -48,7 +51,7 @@ class CancellationTest {
 
     @Test
     void cancellingLeavesNoWorkingDirectoryBehind() throws Exception {
-        long before = temporaryWorkDirectories();
+        Set<String> before = workDirectories();
         CalculateMarginUseCase useCase = useCase(500);
         CountDownLatch firstElementStarted = new CountDownLatch(1);
         AtomicReference<Throwable> failure = new AtomicReference<>();
@@ -74,14 +77,12 @@ class CancellationTest {
         assertThat(run.isAlive()).as("execute() must return once cancelled").isFalse();
         assertThat(failure.get()).isInstanceOf(CalculationCancelledException.class);
         assertThat(useCase.awaitTermination(SETTLE)).isTrue();
-        assertThat(temporaryWorkDirectories())
-                .as("a cancelled run must not leave a working directory in the temp folder")
-                .isEqualTo(before);
+        assertNothingLeftBehind(before);
     }
 
     @Test
     void anInterruptedSearchStopsBeforeRunningAnotherSimulator() throws Exception {
-        long before = temporaryWorkDirectories();
+        Set<String> before = workDirectories();
         CircuitSimulator simulator = simulator(50);
         OperationEvaluator evaluator = new OperationEvaluator(simulator, new OperationJudge());
 
@@ -94,13 +95,13 @@ class CancellationTest {
             Thread.interrupted();
         }
 
-        assertThat(temporaryWorkDirectories()).isEqualTo(before);
+        assertNothingLeftBehind(before);
     }
 
     @Test
     void theShutdownPathDeletesAWorkingDirectoryThatIsStillOpen() throws Exception {
         // Ctrl+C does not let the worker threads unwind, so the hook has to do the deleting.
-        long before = temporaryWorkDirectories();
+        Set<String> before = workDirectories();
         CalculateMarginUseCase useCase = useCase(2000);
         CountDownLatch started = new CountDownLatch(1);
 
@@ -126,7 +127,10 @@ class CancellationTest {
         SimulatorWorkspaces.deleteRemaining();
         run.join(SETTLE.toMillis());
 
-        assertThat(temporaryWorkDirectories()).isEqualTo(before);
+        assertNothingLeftBehind(before);
+        assertThat(SimulatorWorkspaces.openCount())
+                .as("no working directory may still be registered as open")
+                .isZero();
     }
 
     @Test
@@ -177,10 +181,37 @@ class CancellationTest {
         return Circuits.singleResistor(1.0);
     }
 
-    private long temporaryWorkDirectories() throws IOException {
+    /**
+     * The names of the working directories that exist right now. Compared as a set rather than
+     * counted: the temp folder is shared with everything else on the machine, and an unrelated
+     * directory left behind by some earlier crash would otherwise decide whether this test passes.
+     */
+    private Set<String> workDirectories() throws IOException {
         Path tempRoot = Path.of(System.getProperty("java.io.tmpdir"));
         try (var paths = Files.list(tempRoot)) {
-            return paths.filter(path -> path.getFileName().toString().startsWith("marginx-")).count();
+            return paths.map(path -> path.getFileName().toString())
+                    .filter(name -> name.startsWith("marginx-"))
+                    .collect(Collectors.toCollection(TreeSet::new));
         }
+    }
+
+    /**
+     * Fails naming whatever this test created and did not clean up.
+     *
+     * <p>The deleting happens on the worker thread as it unwinds, and on Windows the last handle on
+     * a killed process can outlive the process by a moment, so the check is given a bounded chance
+     * to come good instead of being sampled once.
+     */
+    private void assertNothingLeftBehind(Set<String> before) throws IOException, InterruptedException {
+        Set<String> leaked = Set.of();
+        for (int attempt = 0; attempt < 50; attempt++) {
+            leaked = new TreeSet<>(workDirectories());
+            leaked.removeAll(before);
+            if (leaked.isEmpty()) {
+                return;
+            }
+            Thread.sleep(100);
+        }
+        assertThat(leaked).as("working directories left behind by this run").isEmpty();
     }
 }

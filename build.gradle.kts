@@ -93,6 +93,15 @@ tasks.named("assemble") {
     dependsOn(fatJar)
 }
 
+/** Where the WiX v3 installer puts candle.exe, or null when it is not installed. */
+fun wixToolsDirectory(): String? = sequenceOf("ProgramFiles(x86)", "ProgramFiles")
+    .mapNotNull(System::getenv)
+    .flatMap { programFiles -> File(programFiles).listFiles { file: File -> file.name.startsWith("WiX Toolset") }
+        ?.asSequence() ?: emptySequence() }
+    .map { File(it, "bin") }
+    .firstOrNull { File(it, "candle.exe").isFile }
+    ?.absolutePath
+
 // Distributable 2: an OS-native installer with a bundled runtime, so users need no JDK.
 // Neither JoSIM nor JSIM is bundled - see docs/adr/0001-distribution-strategy.md.
 //
@@ -123,6 +132,12 @@ tasks.register<Exec>("jpackage") {
     // jpackage ships with the JDK that runs Gradle, which must therefore be 21+.
     val jpackageTool = File(System.getProperty("java.home"), "bin/jpackage" + if (windows) ".exe" else "")
     executable = jpackageTool.absolutePath
+
+    // jpackage shells out to WiX to build an MSI and only looks for it on PATH, but the WiX
+    // installer does not put itself there. Finding it saves every developer the same detour.
+    if (windows && type == "msi") {
+        wixToolsDirectory()?.let { wix -> environment("PATH", wix + File.pathSeparator + System.getenv("PATH")) }
+    }
 
     val inputDir = layout.buildDirectory.dir("jpackage/input").get().asFile
     val outputDir = layout.buildDirectory.dir("jpackage/$type").get().asFile
