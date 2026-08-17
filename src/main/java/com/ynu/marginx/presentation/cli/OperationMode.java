@@ -1,4 +1,4 @@
-package com.ynu.marginx.presentation;
+package com.ynu.marginx.presentation.cli;
 
 import com.ynu.marginx.shared.exception.MarginXException;
 import java.util.Arrays;

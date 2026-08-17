@@ -1,4 +1,4 @@
-package com.ynu.marginx.presentation.view;
+package com.ynu.marginx.presentation.cli.view;
 
 import com.ynu.marginx.domain.model.margin.ElementMargin;
 import com.ynu.marginx.domain.model.margin.MarginTable;

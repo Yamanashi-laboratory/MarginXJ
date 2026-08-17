@@ -26,7 +26,8 @@ dependencies {
 }
 
 application {
-    mainClass = "com.ynu.marginx.presentation.MarginXCommand"
+    // The router: no arguments opens the GUI, anything else is the command line.
+    mainClass = "com.ynu.marginx.presentation.MarginX"
 }
 
 // The GUI (netlist editor and margin chart) is built on JavaFX; the plugin resolves the
@@ -38,7 +39,8 @@ val javafxVersion = the<VersionCatalogsExtension>().named("libs")
 
 javafx {
     version = javafxVersion
-    modules("javafx.controls", "javafx.fxml")
+    // javafx.swing is only here for SwingFXUtils, which is how a chart snapshot becomes a PNG.
+    modules("javafx.controls", "javafx.fxml", "javafx.swing")
 }
 
 tasks.withType<JavaCompile>().configureEach {
@@ -67,7 +69,12 @@ tasks.named<JavaExec>("run") {
 // installer for. It also feeds jpackage below.
 val fatJar = tasks.register<Jar>("fatJar") {
     archiveClassifier = "all"
+    // EXCLUDE applies to directory entries too, and the JavaFX jars all carry javafx/scene/: the
+    // first one copied claimed that directory and everything under it from the later jars was
+    // dropped, which silently left javafx.controls out of the jar. Empty directories are not
+    // wanted in an archive anyway, so skipping them removes the collision entirely.
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    includeEmptyDirs = false
     manifest {
         attributes("Main-Class" to application.mainClass.get())
     }
@@ -75,8 +82,9 @@ val fatJar = tasks.register<Jar>("fatJar") {
     from(configurations.runtimeClasspath.map { classpath ->
         classpath.map { if (it.isDirectory) it else zipTree(it) }
     })
-    // Signatures from the dependencies no longer verify once repackaged.
-    exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
+    // Signatures from the dependencies no longer verify once repackaged, and each JavaFX jar
+    // brings its own module-info that means nothing on a classpath.
+    exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "module-info.class")
 }
 
 tasks.named("assemble") {

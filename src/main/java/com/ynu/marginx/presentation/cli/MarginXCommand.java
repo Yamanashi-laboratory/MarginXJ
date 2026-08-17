@@ -1,4 +1,4 @@
-package com.ynu.marginx.presentation;
+package com.ynu.marginx.presentation.cli;
 
 import com.ynu.marginx.application.CalculateMarginUseCase;
 import com.ynu.marginx.application.ProgressListener;
@@ -38,9 +38,9 @@ import com.ynu.marginx.infrastructure.simulator.ProcessExecutor;
 import com.ynu.marginx.infrastructure.config.UserSimulatorSettings;
 import com.ynu.marginx.infrastructure.simulator.SimulatorRegistry;
 import com.ynu.marginx.infrastructure.simulator.SimulatorWorkspaces;
-import com.ynu.marginx.presentation.view.DetailView;
-import com.ynu.marginx.presentation.view.MarginChartView;
-import com.ynu.marginx.presentation.view.ProgressBarView;
+import com.ynu.marginx.presentation.cli.view.DetailView;
+import com.ynu.marginx.presentation.cli.view.MarginChartView;
+import com.ynu.marginx.presentation.cli.view.ProgressBarView;
 import com.ynu.marginx.shared.exception.MarginXException;
 import java.nio.file.Path;
 import java.time.Duration;

@@ -9,10 +9,14 @@
 
 ```
 com.ynu.marginx
-├─ presentation/          CLI・対話メニュー・進捗バー・整形表示
-│   ├─ MarginXCommand         picocli エントリポイント（-j, -d, -m）
-│   ├─ InteractiveMenu / OperationMode
-│   └─ view/                  ProgressBarView, MarginChartView, DetailView
+├─ presentation/          UI。引数なし or --gui で GUI、それ以外は CLI
+│   ├─ MarginX                起動の振り分け（Application を継承しない）
+│   ├─ cli/                   MarginXCommand, InteractiveMenu, OperationMode, ScoreChoice
+│   │   └─ view/              ProgressBarView, MarginChartView, DetailView
+│   └─ gui/                   MarginXFxApplication, MainWindow
+│       ├─ result/            MarginChartData, MarginChartView, MarginTableView
+│       ├─ task/              MarginCalculationTask
+│       └─ export/            ResultExporter (PNG / CSV)
 ├─ application/           ユースケース（手順の組み立てのみ。計算はしない）
 │   ├─ CalculateMarginUseCase   ExecutorService で素子ごとに並列探索
 │   ├─ OptimizeCircuitUseCase   最適化結果の回路と margins を保存
@@ -50,8 +54,8 @@ com.ynu.marginx
 
 | C++ | Java |
 |---|---|
-| `main.cpp`, `menu.cpp`, `display_*.cpp` | `presentation/` |
-| `fig_out.cpp`, `detail_out.cpp`, `Margin.cpp` のインジケータ | `presentation/view/` |
+| `main.cpp`, `menu.cpp`, `display_*.cpp` | `presentation/cli/` |
+| `fig_out.cpp`, `detail_out.cpp`, `Margin.cpp` のインジケータ | `presentation/cli/view/` |
 | `Margin.cpp` の fork + 共有メモリ | `CalculateMarginUseCase`（`ExecutorService`） |
 | `margin_ele.cpp` | `ExhaustiveMarginSearcher` |
 | `margin_ele_low.cpp` | `BinarySearchMarginSearcher` |
@@ -72,6 +76,7 @@ com.ynu.marginx
 | `file_out.cpp` | `FileMarginResultRepository` |
 | `#define JOSIM_COMMAND` | `SimulatorLocation`（保存設定 → 環境変数 → `-D` → PATH → 既定の場所） |
 | `menu 8`（JSIM サブメニュー） | `--simulator` と `SimulatorRegistry`（モードから独立） |
+| `margin_py.cpp`, `scripts/margin.py` | `presentation/gui/result/`（JavaFX Charts。Python は使いません） |
 | `function.hpp` の構造体 | `domain/model/` の record |
 
 ### `_jsim` 二重化の解消
@@ -95,7 +100,7 @@ C++ 版は中間ファイルを `MARGIN<pid>.cir` と PID で分離していま�
 | 4. 同期探索（`calc_margin_syn`） | 完了 |
 | 5. JSIM アダプタ | 完了 |
 | 6. 最適化アルゴリズム群（CMM / CGM / 逐次 CGM） | 完了 |
-| 7. グラフ出力（`margin_py.cpp` の matplotlib を JavaFX GUI に置き換え） | 未着手 |
+| 7. グラフ出力（`margin_py.cpp` の matplotlib を JavaFX GUI に置き換え） | マージン表示まで完了 |
 
 対話メニューには実装済みのモードのみを出しています。
 
@@ -150,6 +155,24 @@ portable zip は展開するだけで動きます（Windows は `MarginXJ.exe`�
 
 macOS 向けの配布物と、x86_64 以外（Linux arm64 など）向けの配布物は現時点ではありません。
 これらの環境では「ビルドと実行（開発者向け）」の手順でソースからビルドしてください。
+
+### GUI
+
+引数なしで起動するとウィンドウが開きます（`--gui` でも同じ）。回路ファイルを選んで実行すると、
+素子ごとの結果が終わったそばから表に積まれ、進捗バーが進みます。計算は別スレッドで走るので
+操作は固まりません。中止ボタンで途中で止められ、止めた時点までの結果はそのまま残ります。
+
+```bash
+MarginXJ
+```
+
+- **マージン図** — 素子ごとに下限〜上限を 1 本の横棒で表示します（`scripts/margin.py` と同じ形）。
+  表の行を選ぶと対応する棒が濃く変わり、棒をクリックすると表の行が選ばれます。
+- **使用中のシミュレータ**を常時表示します。JSIM に切り替わっている場合は警告色になり、
+  理由がツールチップで出ます。
+- **エクスポート** — グラフは PNG、結果は CSV（CLI と同じ形式・同じ出所コメント付き）。
+
+このバージョンの GUI はマージン計算（3 モード）の表示までです。最適化モードは CLI から使えます。
 
 ### シミュレータの場所
 
@@ -273,13 +296,15 @@ JoSIM のコマンド名は設定で差し替えられます。
 
 検証済み:
 
-- `./gradlew clean build` は **BUILD SUCCESSFUL**、テスト **95 件すべて通過**（JDK 26、
+- `./gradlew clean build` は **BUILD SUCCESSFUL**、テスト **105 件すべて通過**（JDK 26、
   実 JoSIM と実 JSIM を指定した状態で計測。指定が無い場合は IT 4 件がスキップされます）。
   `org.openjfx.javafxplugin` 0.1.0 は Gradle 9 でも問題なく動作します。
 - **実 JoSIM 2.6.8 に対する `RealJosimIT` が通過。** かねてより未検証だった
   「実 JoSIM が `.FILE` で出力先を決めるか」は**決める**ことを実測で確認しました。`-o` への変更は不要です。
 - **実 JSIM に対する `RealJsimIT` が通過。**
 - CMM（モード 5）は実 JoSIM で通しで動作し、`<回路名>_out.cir` を出力することを確認済み。
+- **GUI。** 引数なし / `--gui` のいずれでもウィンドウが開くこと、CLI が従来どおり動くことを実測。
+  実 JoSIM で測ったマージンを本番のチャートに描かせ、PNG / CSV 出力まで確認しました。
 - **Ctrl+C による中断。** 計算中に実際のコンソール制御イベントを送り、5 個開いていた作業ディレクトリが
   0 になること、シミュレータのプロセス（ラッパー経由の孫プロセスを含む）が残らないことを実測しました。
 
@@ -347,6 +372,9 @@ JAVA_TOOL_OPTIONS = -Djdk.net.unixdomain.tmpdir=%USERPROFILE%/.gradle/uds
   一般的インストール先）と、明示指定が解決できない場合にフォールバックせず失敗すること
 - `SimulatorRegistryTest` — JoSIM のみ / JSIM のみ / 両方 / どちらも無し / 明示指定 の選択
 - `FileMarginResultRepositoryTest` — 結果ファイル先頭の出所記録と、データ行の形式が変わらないこと
+- `MarginChartDataTest` — グラフの軸範囲・並び順・棒の幅。JavaFX に依存しない純粋なクラス
+- `MarginResultViewsTest` / `MarginCalculationTaskTest` — 実際のシーングラフに対する表とグラフの
+  選択連動、結果の逐次追加、中止。ツールキットが無い環境ではスキップされます
 - `CancellationTest` — 中断してもシミュレータのプロセスと一時ディレクトリが残らないこと、
   素子ごとの進捗が通知されること。スタブに遅延を入れ、シミュレーション実行中に中断させて検証
 - `RealJosimIT` / `RealJsimIT` — 実シミュレータに対するテスト。既定ではスキップ

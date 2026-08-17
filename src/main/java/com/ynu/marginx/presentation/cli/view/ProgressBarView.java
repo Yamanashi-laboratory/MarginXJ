@@ -1,4 +1,4 @@
-package com.ynu.marginx.presentation.view;
+package com.ynu.marginx.presentation.cli.view;
 
 import com.ynu.marginx.application.ProgressListener;
 import java.io.PrintStream;
