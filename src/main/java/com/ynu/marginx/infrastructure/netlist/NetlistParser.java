@@ -83,7 +83,7 @@ public final class NetlistParser {
     private CircuitElement readElement(State state, ElementType type, String line) {
         String[] tokens = line.split("\\s+");
         if (tokens.length < 4) {
-            throw new CircuitFileException("Malformed element line: " + line);
+            throw new CircuitFileException("Malformed element line: " + line, state.lineNumber);
         }
         String name = tokens[0].toUpperCase(Locale.ROOT);
         String node1 = tokens[1];
@@ -95,11 +95,11 @@ public final class NetlistParser {
                     UnitPrefix.magnitude(tokens[3]), "", range, ShuntSpec.unshunted(), "");
             case JUNCTION, JUNCTION_INDUCTANCE -> {
                 String model = tokens[3];
-                yield element(type, state, name, node1, node2, junctionArea(line), "", range,
+                yield element(type, state, name, node1, node2, junctionArea(state, line), "", range,
                         ShuntSpec.unshunted(), model);
             }
             case VOLTAGE_SOURCE, CURRENT_SOURCE -> {
-                String amplitude = sourceAmplitude(tokens, line);
+                String amplitude = sourceAmplitude(state, tokens, line);
                 yield element(type, state, name, node1, node2, UnitPrefix.magnitude(amplitude),
                         UnitPrefix.detect(amplitude) + type.baseUnit(), range, ShuntSpec.unshunted(), "");
             }
@@ -123,10 +123,11 @@ public final class NetlistParser {
                 UnitPrefix.round(value), unit, range, false, 0, shunt, model);
     }
 
-    private double junctionArea(String line) {
+    private double junctionArea(State state, String line) {
         int assignment = line.lastIndexOf('=');
         if (assignment < 0) {
-            throw new CircuitFileException("Junction line is missing an \"area=\" assignment: " + line);
+            throw new CircuitFileException(
+                    "Junction line is missing an \"area=\" assignment: " + line, state.lineNumber);
         }
         return UnitPrefix.magnitude(line.substring(assignment + 1).trim());
     }
@@ -134,9 +135,10 @@ public final class NetlistParser {
     /**
      * Bias sources are written as a two-point PWL ramp; the swept quantity is its final amplitude.
      */
-    private String sourceAmplitude(String[] tokens, String line) {
+    private String sourceAmplitude(State state, String[] tokens, String line) {
         if (tokens.length < 7) {
-            throw new CircuitFileException("Bias source line is not a two-point PWL ramp: " + line);
+            throw new CircuitFileException(
+                    "Bias source line is not a two-point PWL ramp: " + line, state.lineNumber);
         }
         return tokens[6].replace(")", "");
     }
@@ -183,13 +185,13 @@ public final class NetlistParser {
         int last = state.elements.size() - 1;
         CircuitElement element = state.elements.get(last);
         if (line.startsWith("*MIN")) {
-            state.elements.set(last, element.withRange(element.range().withMin(directiveValue(line))));
+            state.elements.set(last, element.withRange(element.range().withMin(directiveValue(state, line))));
         } else if (line.startsWith("*MAX")) {
-            state.elements.set(last, element.withRange(element.range().withMax(directiveValue(line))));
+            state.elements.set(last, element.withRange(element.range().withMax(directiveValue(state, line))));
         } else if (line.startsWith("*FIX")) {
             state.elements.set(last, element.fixedValue());
         } else if (line.startsWith("*SYN")) {
-            state.elements.set(last, element.synchronizedWith((int) directiveValue(line)));
+            state.elements.set(last, element.synchronizedWith((int) directiveValue(state, line)));
         }
     }
 
@@ -200,20 +202,20 @@ public final class NetlistParser {
         for (ElementType type : ElementType.values()) {
             String key = "*" + type.directiveKey();
             if (line.startsWith(key + "MIN")) {
-                state.ranges.put(type, state.range(type).withMin(directiveValue(line)));
+                state.ranges.put(type, state.range(type).withMin(directiveValue(state, line)));
                 return;
             }
             if (line.startsWith(key + "MAX")) {
-                state.ranges.put(type, state.range(type).withMax(directiveValue(line)));
+                state.ranges.put(type, state.range(type).withMax(directiveValue(state, line)));
                 return;
             }
         }
     }
 
-    private double directiveValue(String line) {
+    private double directiveValue(State state, String line) {
         int assignment = line.indexOf('=');
         if (assignment < 0) {
-            throw new CircuitFileException("Directive is missing \"=\": " + line);
+            throw new CircuitFileException("Directive is missing \"=\": " + line, state.lineNumber);
         }
         return UnitPrefix.magnitude(line.substring(assignment + 1).trim());
     }

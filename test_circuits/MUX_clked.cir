@@ -1,0 +1,330 @@
+**** **** **** **** **** **** **** **** **** **** **** 
+*JSIM control file for CADENCE by kameda@cq.jp.nec.com
+**** **** **** **** **** **** **** **** **** **** ****
+
+*JSIM model
+**HSTP**
+.model jjmod jj(Rtype=1, Vg=2.8mV, Cap=0.064pF, R0=100ohm, Rn=17ohm, Icrit=0.1mA)
+**OPEN**
+*.model jjmod jj(Rtype=1, Vg=2.8mV, Cap=0.218pF, R0=200ohm, Rn=17ohm, Icrit=0.1mA)
+
+*RMIN=6
+*RMAX=30
+*BMIN=1
+*** netlist file ***
+**** **** **** **** **** **** **** ****+
+*** Lib : adp_matsuoka_lib
+*** Cell: MUX_clked_ver2test
+*** View: schematic
+*** Jan 21 15:01:41 2025
+**** **** **** **** **** **** **** ****
+
+*** ijtl
+.subckt ijtl          1          2
+***       din      dout
+B1     3     4               jjmod area=2.170
+RS1     3     4               5.207ohm  *SHUNT=11.300
+LP2                4         0   0.198pH fcheck
+L2                 3         2   1.976pH fcheck
+L1                 1         3   4.534pH fcheck
+.ends
+
+*** jtl
+.subckt jtl          1          2        11
+***       din      dout
+B1     5     6               jjmod area=2.160
+RS1     5     6               5.231ohm  *SHUNT=11.300
+B2     7     8               jjmod area=2.160
+RS2     7     8               5.231ohm  *SHUNT=11.300
+LP1                6         0   0.096pH fcheck
+LP2                8         0   0.099pH fcheck
+L1                 9         5   2.288pH fcheck
+L3                 7         2   1.963pH fcheck
+L2                 5         7   4.506pH fcheck
+LPR1              10         9   0.177pH fcheck
+LPIN               1         9   0.317pH fcheck
+R1                11        10   8.32ohm
+.ends
+
+*** sink
+.subckt sink          1         6
+***       din
+B1    12    13               jjmod area=2.170
+RS1    12    13               5.207ohm  *SHUNT=11.300
+LP1               13         0   0.130pH fcheck
+L1                14        12   2.272pH fcheck
+L2                12        15   4.766pH fcheck
+LPR1               5        14   0.177pH fcheck
+LPIN               1        14   0.317pH fcheck
+R2                15         0   4.08ohm
+R1                 6         5   8.32ohm
+.ends
+
+
+*** MUX_clked_ver3
+.subckt MUX_clked_ver3          1          2          3          4          5          6          7          8        70
+***         A         B         C    ILFBin   ILFBout       clk     reset       set
+l3    47    40               3.821pH
+
+L1    49    47               4.137pH
+*SYN=1
+L2    39    40               4.137pH
+*SYN=1
+
+
+L4    59    54               2.436pH
+*SYN=2
+L5    27    28               2.436pH
+*SYN=2
+
+L6    54    55               2.489pH
+*SYN=3
+L7    28    33               2.489pH
+*SYN=3
+
+L8    60    52               1.866pH
+*SYN=4
+L9    26    29               1.866pH
+*SYN=4
+
+L10    52    53               1.776pH
+*SYN=5
+L11    29    32               1.776pH
+*SYN=5
+
+L12    21    22              11.186pH
+*SYN=6
+L13    19    10              11.186pH
+*SYN=6
+
+L14    45    42               1.104pH
+
+L15    42    37               3.473pH
+
+L16    37     3               1.892pH
+
+L17    24    17               2.726pH
+
+L18    17    13               0.420pH
+
+L19    13    14               2.769pH
+*SYN=7
+L20    16    13               2.769pH
+*SYN=7
+
+L21    22    11               0.013pH
+*SYN=8
+L22     9    10               0.013pH
+*SYN=8
+
+L23    11    12               0.815pH
+*SYN=9
+L24    15     9               0.815pH
+*SYN=9
+
+L25    20    21               0.016pH
+*SYN=10
+L26    18    19               0.016pH
+*SYN=10
+
+L27   121    21               0.017pH
+L28   119    19               0.017pH
+
+
+llfb     4     5              32.618pH
+
+LP20              23         0   0.138pH fcheck
+LPR5              25        24   0.179pH fcheck
+LPCLK              6        24   0.380pH fcheck
+LPB                2        26   0.951pH fcheck
+LPRST              7        27   0.951pH fcheck
+LPR2              30        26   4.700pH fcheck
+LPR4              31        27   4.700pH fcheck
+LP2               34         0   0.190pH fcheck
+LP4               35         0   0.190pH fcheck
+LP10              36         0   0.190pH fcheck
+LP19              41         0   0.226pH fcheck
+LP14              43         0   0.190pH fcheck
+LPR6              44        42   4.700pH fcheck
+LP16              46         0   0.190pH fcheck
+LP15              48         0   0.190pH fcheck
+LP13              50         0   0.190pH fcheck
+LP1               56         0   0.190pH fcheck
+LP3               57         0   0.190pH fcheck
+LP9               58         0   0.190pH fcheck
+LPR3              61        59   4.700pH fcheck
+LPR1              62        60   4.700pH fcheck
+LPSET              8        59   0.951pH fcheck
+LPA                1        60   0.951pH fcheck
+*LPR1              51        49   4.700pH fcheck
+*LPR2              38        39   4.700pH fcheck
+
+k1  Llfb    L3               0.181
+*FIX
+
+*r1    70    51              16.411ohm
+**SYN=11
+*r2    70    38              16.411ohm
+**SYN=11
+
+
+r1    70    62               8.810ohm
+*SYN=13
+r2    70    30               8.810ohm
+*SYN=13
+
+r3    70    61               7.156ohm
+*SYN=12
+r4    70    31               7.156ohm
+*SYN=12
+
+
+r6    70    44               9.784ohm
+r5    70    25               9.511ohm
+
+b1    49    56  jjmod area=1.689     
+RS1    49    56               6.691ohm  *SHUNT=11.300
+*SYN=14
+b2    39    34  jjmod area=1.689     
+RS2    39    34               6.691ohm  *SHUNT=11.300
+*SYN=14
+
+b3    54    57  jjmod area=2.160     
+RS3    54    57               5.231ohm  *SHUNT=11.300
+*FIX
+b4    28    35  jjmod area=2.160     
+RS4    28    35               5.231ohm  *SHUNT=11.300
+*FIX
+b5    55    49  jjmod area=2.384     
+RS5    55    49               4.739ohm  *SHUNT=11.300
+*SYN=15
+b6    33    39  jjmod area=2.384     
+RS6    33    39               4.739ohm  *SHUNT=11.300
+*SYN=15
+
+b7    47   121  jjmod area=1.129    q 
+RS7    47   121              10.005ohm  *SHUNT=11.300
+*SYN=16
+b8    40    19  jjmod area=1.129     
+RS8    40    19              10.005ohm  *SHUNT=11.300
+*SYN=16
+
+b9    52    58  jjmod area=2.160     
+RS9    52    58               5.231ohm  *SHUNT=11.300
+*FIX
+b10    29    36  jjmod area=2.160     
+RS10    29    36               5.231ohm  *SHUNT=11.300
+*FIX
+b11    53    20  jjmod area=2.429     
+RS11    53    20               4.652ohm  *SHUNT=11.300
+*SYN=17
+b12    32    18  jjmod area=2.429     
+RS12    32    18               4.652ohm  *SHUNT=11.300
+*SYN=17
+
+b13    20    50  jjmod area=1.438     
+RS13    20    50               7.857ohm  *SHUNT=11.300
+*SYN=18
+b14    18    43  jjmod area=1.438     
+RS14    18    43               7.857ohm  *SHUNT=11.300
+*SYN=18
+
+b15    22    48  jjmod area=1.821     
+RS15    22    48               6.204ohm  *SHUNT=11.300
+*SYN=19
+b16    10    46  jjmod area=1.821     
+RS16    10    46               6.204ohm  *SHUNT=11.300
+*SYN=19
+
+b17    12    45  jjmod area=1.087     
+RS17    12    45              10.399ohm  *SHUNT=11.300
+*SYN=20
+b18    15    45  jjmod area=1.087     
+RS18    15    45              10.399ohm  *SHUNT=11.300
+*SYN=20
+
+b19    37    41  jjmod area=2.909     
+RS19    37    41               3.885ohm  *SHUNT=11.300
+b20    17    23  jjmod area=2.150     
+RS20    17    23               5.256ohm  *SHUNT=11.300
+*FIX
+
+b21    11    14  jjmod area=1.016     
+RS21    11    14              11.126ohm  *SHUNT=11.300
+*SYN=21
+b22     9    16  jjmod area=1.016     
+RS22     9    16              11.126ohm  *SHUNT=11.300
+*SYN=21
+
+.ends
+
+*** top cell: MUX_clked_ver2test
+XI5              ijtl         65          5
+XI9              ijtl         15         74
+XI7              ijtl         75         29
+XI1              ijtl          4         30
+XI3              ijtl         25          9
+XI6               jtl          5         66         14
+XI10              jtl         74         28         14
+XI4               jtl          9         26         14
+XI8               jtl         29         76         14
+XI11              jtl         77         27         14
+XI2               jtl         30         78         14
+XI12             sink         27         14
+XI0        MUX_clked_ver3         78         26         77          8          0         66         28         76         14
+
+
+Vset              75         0  PWL(0ps 0mv 350ps 0mv 351ps 2.068mv 352ps 0mv 450ps 0mv 451ps 2.068mv 452ps 0mv)
+Vreset            15         0  PWL(0ps 0mv 950ps 0mv 951ps 2.068mv 952ps 0mv 1050ps 0mv 1051ps 2.068mv 1052ps 0mv)
+*Vset              75         0  PWL(0ps 0mv )
+*Vreset            15         0  PWL(0ps 0mv)
+
+VinA               4         0  PWL(0ps 0mv 150ps 0mv 151ps 2.068mv 152ps 0mv 550ps 0mv 551ps 2.068mv 552ps 0mv 750ps 0mv 751ps 2.068mv 752ps 0mv 1150ps 0mv 1151ps 2.068mv 1152ps 0mv)
+VinB              25         0  PWL(0ps 0mv 250ps 0mv 251ps 2.068mv 252ps 0mv 650ps 0mv 651ps 2.068mv 652ps 0mv 850ps 0mv 851ps 2.068mv 852ps 0mv 1250ps 0mv 1251ps 2.068mv 1252ps 0mv)
+*VinA               4         0  PWL(0ps 0mv 200ps 0mv 201ps 2.068mv 202ps 0mv 250ps 0mv 251ps 2.068mv 252ps 0mv) *setup
+*VinA               4         0  PWL(0ps 0mv 200.84ps 0mv 201.84ps 2.068mv 202.84ps 0mv)
+*VinA               4         0  PWL(0ps 0mv 150ps 0mv 151ps 2.068mv 152ps 0mv 250.57ps 0mv 251.57ps 2.068mv 252.57ps 0mv)
+ 
+*VinB              25         0  PWL(0ps 0mv)
+
+Vclk              65         0  PULSE(0mv 1.034mv 100ps 1ps 1ps 1ps 100ps )
+*Vclk              65         0  PWL(0ps 0mv 199.89ps 0mv 200.89ps 2.068mv 201.89ps 0mv 300ps 0mv 301ps 2.068mv 302ps 0mv 400ps 0mv 401ps 2.068mv 402ps 0mv) *setup
+*Vclk              65         0  PWL(0ps 0mv 200ps 0mv 201ps 2.068mv 202ps 0mv 300ps 0mv 301ps 2.068mv 302ps 0mv 400ps 0mv 401ps 2.068mv 402ps 0mv)
+
+
+vb    14     0   PWL(0ps 0mV    50ps                  2.500mV)
+*FIX
+iblfb     0     8   PWL(0ps 0mV    50ps                  0.500mA)
+*FIX
+
+.tran 1ps 1400ps 0ps
+.FILE CIRCUIT3155317.CSV
+
+*.print devv B2.XI8  *set
+*.print devv B2.XI10 *reset
+*.print devv B2.XI2  *A
+*.print devv B2.XI4  *B
+*.print devv B2.XI6  *clk
+*.print devv B1.XI11 *C
+
+
+.print phase B1.XI0
+.print phase B2.XI0
+.print phase B5.XI0
+.print phase B6.XI0
+.print phase B7.XI0
+.print phase B8.XI0
+.print phase B11.XI0
+.print phase B12.XI0
+.print phase B13.XI0
+.print phase B14.XI0
+.print phase B15.XI0
+.print phase B16.XI0
+.print phase B17.XI0
+.print phase B18.XI0
+.print phase B19.XI0
+.print phase B21.XI0
+.print phase B22.XI0
+
+
+.end

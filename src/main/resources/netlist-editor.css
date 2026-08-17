@@ -38,3 +38,21 @@
 .netlist-plain {
     -fx-fill: #202020;
 }
+
+/*
+ * A margin target: an element whose designator starts with a lower-case letter. That rule is the
+ * least obvious thing about the format, so the lines it picks out are marked rather than left for
+ * the reader to work out. The marking comes from the parser, not from re-reading the text.
+ */
+.netlist-target {
+    -fx-font-weight: bold;
+    -fx-underline: false;
+    rtfx-background-color: #fff3d6;
+}
+
+/* The line the parser stopped on. */
+.netlist-error {
+    -fx-fill: #b00020;
+    rtfx-background-color: #ffe3e6;
+    -fx-underline: true;
+}

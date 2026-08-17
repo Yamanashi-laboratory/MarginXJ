@@ -22,20 +22,19 @@ import com.ynu.marginx.infrastructure.netlist.NetlistRenderer;
 import com.ynu.marginx.infrastructure.result.FileMarginResultRepository;
 import com.ynu.marginx.infrastructure.simulator.ProcessExecutor;
 import com.ynu.marginx.infrastructure.simulator.SimulatorRegistry;
-import com.ynu.marginx.presentation.gui.editor.NetlistEditor;
+import com.ynu.marginx.presentation.gui.editor.EditorPane;
 import com.ynu.marginx.presentation.gui.export.ResultExporter;
 import com.ynu.marginx.presentation.gui.result.MarginChartView;
 import com.ynu.marginx.presentation.gui.result.MarginTableView;
 import com.ynu.marginx.presentation.gui.task.MarginCalculationTask;
 import com.ynu.marginx.shared.exception.MarginXException;
 import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
@@ -74,7 +73,7 @@ public final class MainWindow extends BorderPane {
     private final Button exportCsvButton = new Button("Export CSV");
     private final MarginChartView chart = new MarginChartView();
     private final MarginTableView table = new MarginTableView();
-    private final NetlistEditor editor = new NetlistEditor();
+    private final EditorPane editor = new EditorPane();
 
     private final SimulatorRegistry registry;
     private SimulatorRegistry.Selection selection;
@@ -149,6 +148,9 @@ public final class MainWindow extends BorderPane {
         resultsTab.setClosable(false);
         // The editor gets a tab of its own: the judgement file will join it here as a second pane.
         Tab netlistTab = new Tab("Netlist", editor);
+        // A star on the tab is the reminder that the file on disk is not what is on screen.
+        editor.modifiedProperty().addListener((observable, previous, dirty) ->
+                netlistTab.setText(dirty ? "Netlist *" : "Netlist"));
         netlistTab.setClosable(false);
 
         TabPane tabs = new TabPane(resultsTab, netlistTab);
@@ -219,15 +221,35 @@ public final class MainWindow extends BorderPane {
 
     private void loadIntoEditor(Path file) {
         try {
-            editor.setText(Files.readString(file));
-        } catch (IOException e) {
-            // Not being able to show the text is no reason to refuse to measure the file.
-            editor.setText("Cannot read " + file + ": " + e.getMessage());
+            editor.open(file);
+        } catch (MarginXException e) {
+            report(e);
         }
     }
 
+    /**
+     * The calculation reads the files from disk, so edits that have not been written out would be
+     * measured as they were before. Asking beats silently measuring the wrong thing.
+     */
+    private boolean readyToRun() {
+        if (!editor.modifiedProperty().get()) {
+            return true;
+        }
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
+                "The netlist has been edited. Save it before running?",
+                ButtonType.CANCEL, ButtonType.NO, ButtonType.YES);
+        alert.setHeaderText("Unsaved changes");
+        alert.initOwner(window());
+        ButtonType answer = alert.showAndWait().orElse(ButtonType.CANCEL);
+        if (answer == ButtonType.YES) {
+            editor.save();
+            return true;
+        }
+        return answer == ButtonType.NO;
+    }
+
     private void run() {
-        if (circuitFile == null || selection == null) {
+        if (circuitFile == null || selection == null || !readyToRun()) {
             return;
         }
         Path directory = circuitFile.getParent();

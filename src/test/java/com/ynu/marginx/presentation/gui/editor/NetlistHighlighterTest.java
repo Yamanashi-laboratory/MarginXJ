@@ -87,6 +87,22 @@ class NetlistHighlighterTest {
     }
 
     @Test
+    void aDoubledStarIsAComment() {
+        // The parser matches "*SYN" from the very first character, so "**SYN=11" is inert - it is
+        // how a directive gets commented out. Colouring it as a directive would say the opposite.
+        assertThat(highlighter.styleOf("**SYN=11")).isEqualTo(NetlistHighlighter.COMMENT);
+        assertThat(highlighter.styleOf("*SYN=11")).isEqualTo(NetlistHighlighter.DIRECTIVE);
+        assertThat(highlighter.styleOf("**** **** ****")).isEqualTo(NetlistHighlighter.COMMENT);
+    }
+
+    @Test
+    void aCommentedOutElementStaysAComment() {
+        // Whole element lines are commented out with a star in the real circuits.
+        assertThat(highlighter.styleOf("*r1   70   51   16.411ohm")).isEqualTo(NetlistHighlighter.COMMENT);
+        assertThat(highlighter.styleOf("*LPR1  51  49  4.700pH fcheck")).isEqualTo(NetlistHighlighter.COMMENT);
+    }
+
+    @Test
     void leavesBlankLinesAlone() {
         assertThat(highlighter.styleOf("")).isEqualTo(NetlistHighlighter.PLAIN);
         assertThat(highlighter.styleOf("   ")).isEqualTo(NetlistHighlighter.PLAIN);
