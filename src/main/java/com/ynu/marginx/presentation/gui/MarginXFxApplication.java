@@ -22,7 +22,10 @@ public final class MarginXFxApplication extends Application {
     @Override
     public void start(Stage stage) {
         stage.setTitle("MarginXJ");
-        stage.setScene(new Scene(new MainWindow(), WIDTH, HEIGHT));
+        Scene scene = new Scene(new MainWindow(), WIDTH, HEIGHT);
+        scene.getStylesheets().add(
+                MarginXFxApplication.class.getResource("/netlist-editor.css").toExternalForm());
+        stage.setScene(scene);
         stage.show();
     }
 

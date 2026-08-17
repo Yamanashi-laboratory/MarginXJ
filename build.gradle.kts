@@ -17,6 +17,8 @@ repositories {
 dependencies {
     implementation(libs.picocli)
     annotationProcessor(libs.picocli.codegen)
+    // The netlist editor: a styled text area, which JavaFX itself does not have.
+    implementation(libs.richtextfx)
 
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)

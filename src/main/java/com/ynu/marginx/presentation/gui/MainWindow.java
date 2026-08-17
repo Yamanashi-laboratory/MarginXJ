@@ -22,12 +22,15 @@ import com.ynu.marginx.infrastructure.netlist.NetlistRenderer;
 import com.ynu.marginx.infrastructure.result.FileMarginResultRepository;
 import com.ynu.marginx.infrastructure.simulator.ProcessExecutor;
 import com.ynu.marginx.infrastructure.simulator.SimulatorRegistry;
+import com.ynu.marginx.presentation.gui.editor.NetlistEditor;
 import com.ynu.marginx.presentation.gui.export.ResultExporter;
 import com.ynu.marginx.presentation.gui.result.MarginChartView;
 import com.ynu.marginx.presentation.gui.result.MarginTableView;
 import com.ynu.marginx.presentation.gui.task.MarginCalculationTask;
 import com.ynu.marginx.shared.exception.MarginXException;
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -37,6 +40,8 @@ import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.SplitPane;
+import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
@@ -69,6 +74,7 @@ public final class MainWindow extends BorderPane {
     private final Button exportCsvButton = new Button("Export CSV");
     private final MarginChartView chart = new MarginChartView();
     private final MarginTableView table = new MarginTableView();
+    private final NetlistEditor editor = new NetlistEditor();
 
     private final SimulatorRegistry registry;
     private SimulatorRegistry.Selection selection;
@@ -135,10 +141,19 @@ public final class MainWindow extends BorderPane {
         return box;
     }
 
-    private SplitPane results() {
+    private TabPane results() {
         SplitPane split = new SplitPane(chart, table);
         split.setDividerPositions(0.55);
-        return split;
+
+        Tab resultsTab = new Tab("Results", split);
+        resultsTab.setClosable(false);
+        // The editor gets a tab of its own: the judgement file will join it here as a second pane.
+        Tab netlistTab = new Tab("Netlist", editor);
+        netlistTab.setClosable(false);
+
+        TabPane tabs = new TabPane(resultsTab, netlistTab);
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        return tabs;
     }
 
     private HBox statusBar() {
@@ -197,7 +212,17 @@ public final class MainWindow extends BorderPane {
         if (chosen != null) {
             circuitFile = chosen.toPath().toAbsolutePath();
             circuitLabel.setText(circuitFile.toString());
+            loadIntoEditor(circuitFile);
             updateButtons(false);
+        }
+    }
+
+    private void loadIntoEditor(Path file) {
+        try {
+            editor.setText(Files.readString(file));
+        } catch (IOException e) {
+            // Not being able to show the text is no reason to refuse to measure the file.
+            editor.setText("Cannot read " + file + ": " + e.getMessage());
         }
     }
 

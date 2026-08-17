@@ -14,6 +14,7 @@ com.ynu.marginx
 │   ├─ cli/                   MarginXCommand, InteractiveMenu, OperationMode, ScoreChoice
 │   │   └─ view/              ProgressBarView, MarginChartView, DetailView
 │   └─ gui/                   MarginXFxApplication, MainWindow
+│       ├─ editor/            NetlistHighlighter, NetlistEditor (RichTextFX)
 │       ├─ result/            MarginChartData, MarginChartView, MarginTableView
 │       ├─ task/              MarginCalculationTask
 │       └─ export/            ResultExporter (PNG / CSV)
@@ -171,8 +172,13 @@ MarginXJ
 - **使用中のシミュレータ**を常時表示します。JSIM に切り替わっている場合は警告色になり、
   理由がツールチップで出ます。
 - **エクスポート** — グラフは PNG、結果は CSV（CLI と同じ形式・同じ出所コメント付き）。
+- **Netlist タブ**に選んだ回路を表示します。素子行・ドットコマンド・MarginX 独自ディレクティブ
+  （`*MIN` `*MAX` `*FIX` `*SYN` `*LMIN` などと、シャント行の `*SHUNT` `*Bc` `*calc`）・コメントを
+  色分けします。ハイライトが認識する素子記号は `ElementType` から導いており、パーサと語彙がずれません。
 
-このバージョンの GUI はマージン計算（3 モード）の表示までです。最適化モードは CLI から使えます。
+このバージョンの GUI はマージン計算（3 モード）の表示と、ネットリストの色分け表示までです。
+エディタの構文検証・素子一覧・マージン対象の明示・judgement の同時編集は未実装で、
+最適化モードは CLI から使えます。
 
 ### シミュレータの場所
 
@@ -296,7 +302,7 @@ JoSIM のコマンド名は設定で差し替えられます。
 
 検証済み:
 
-- `./gradlew clean build` は **BUILD SUCCESSFUL**、テスト **105 件すべて通過**（JDK 26、
+- `./gradlew clean build` は **BUILD SUCCESSFUL**、テスト **113 件すべて通過**（JDK 26、
   実 JoSIM と実 JSIM を指定した状態で計測。指定が無い場合は IT 4 件がスキップされます）。
   `org.openjfx.javafxplugin` 0.1.0 は Gradle 9 でも問題なく動作します。
 - **実 JoSIM 2.6.8 に対する `RealJosimIT` が通過。** かねてより未検証だった
@@ -372,6 +378,8 @@ JAVA_TOOL_OPTIONS = -Djdk.net.unixdomain.tmpdir=%USERPROFILE%/.gradle/uds
   一般的インストール先）と、明示指定が解決できない場合にフォールバックせず失敗すること
 - `SimulatorRegistryTest` — JoSIM のみ / JSIM のみ / 両方 / どちらも無し / 明示指定 の選択
 - `FileMarginResultRepositoryTest` — 結果ファイル先頭の出所記録と、データ行の形式が変わらないこと
+- `NetlistHighlighterTest` — 色分けの規則。素子記号は `ElementType` 全種を走査し、
+  `*MIN` のようなディレクティブと単なるコメントの区別を固定。JavaFX 非依存
 - `MarginChartDataTest` — グラフの軸範囲・並び順・棒の幅。JavaFX に依存しない純粋なクラス
 - `MarginResultViewsTest` / `MarginCalculationTaskTest` — 実際のシーングラフに対する表とグラフの
   選択連動、結果の逐次追加、中止。ツールキットが無い環境ではスキップされます

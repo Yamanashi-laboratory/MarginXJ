@@ -1,0 +1,40 @@
+/* Colours for the netlist editor. The classes are set by NetlistHighlighter. */
+
+.netlist-editor {
+    -fx-font-family: "Consolas", "Menlo", "DejaVu Sans Mono", monospace;
+    -fx-font-size: 13px;
+    -fx-background-color: white;
+}
+
+.netlist-editor .lineno {
+    -fx-background-color: #f2f2f2;
+    -fx-text-fill: #909090;
+    -fx-font-family: "Consolas", "Menlo", "DejaVu Sans Mono", monospace;
+}
+
+/* An element line: the thing a margin is measured on. */
+.netlist-element {
+    -fx-fill: #1f5fa8;
+}
+
+/* .tran, .print, .model and the rest, which pass through to the simulator untouched. */
+.netlist-dot-command {
+    -fx-fill: #7a3ea3;
+    -fx-font-weight: bold;
+}
+
+/* The starred words MarginX reads: *MIN, *MAX, *FIX, *SYN, *LMIN..., *SHUNT, *Bc, *calc. */
+.netlist-directive {
+    -fx-fill: #b35c00;
+    -fx-font-weight: bold;
+}
+
+/* Any other starred line, which the simulator treats as a remark. */
+.netlist-comment {
+    -fx-fill: #6a8759;
+    -fx-font-style: italic;
+}
+
+.netlist-plain {
+    -fx-fill: #202020;
+}
