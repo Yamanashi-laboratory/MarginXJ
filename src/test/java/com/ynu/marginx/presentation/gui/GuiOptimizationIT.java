@@ -2,8 +2,11 @@ package com.ynu.marginx.presentation.gui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.ynu.marginx.domain.model.circuit.Netlist;
 import com.ynu.marginx.infrastructure.config.SimulatorProperties;
 import com.ynu.marginx.infrastructure.config.UserSimulatorSettings;
+import com.ynu.marginx.infrastructure.netlist.FileNetlistRepository;
+import com.ynu.marginx.infrastructure.netlist.NetlistParser;
 import com.ynu.marginx.infrastructure.netlist.NetlistRenderer;
 import com.ynu.marginx.infrastructure.simulator.ProcessExecutor;
 import com.ynu.marginx.infrastructure.simulator.SimulatorRegistry;
@@ -86,12 +89,41 @@ class GuiOptimizationIT {
         assertThat(FxToolkit.call(() -> table(window).rows().size())).isEqualTo(TARGETS);
     }
 
+    @Test
+    void fillsTheTableInTheCircuitsOrderWhileTheWorkersFinishInTheirOwn() throws Exception {
+        Path circuit = copyIn(CIRCUIT + ".cir");
+        copyIn(CIRCUIT + ".txt");
+
+        MainWindow window = FxToolkit.call(this::window);
+        FxToolkit.run(() -> {
+            choose(window, circuit);
+            mode(window).setValue(modeNamed(window, "Margin: binary search"));
+        });
+        FxToolkit.run(FxToolkit.call(() -> button(window, "Run"))::fire);
+
+        awaitCompletion(window);
+
+        // One worker per processor, so the results come back in whatever order they finish - the
+        // point of the check is that the table does not show them that way. The order to hold it
+        // to is the parser's own, which groups by element type rather than following the file.
+        Netlist netlist = new FileNetlistRepository(workingDirectory, new NetlistParser()).load(CIRCUIT);
+        List<String> expected = new ArrayList<>();
+        for (int index = 0; index < netlist.elementCount(); index++) {
+            expected.add(netlist.element(index).displayName());
+        }
+        List<String> shown = FxToolkit.call(() -> table(window).rows().stream()
+                .map(row -> row.displayName())
+                .toList());
+        assertThat(shown).hasSize(TARGETS).containsExactlyElementsOf(expected);
+    }
+
     /** Polls the status line, which is where the window says how the run ended. */
     private String awaitCompletion(MainWindow window) throws Exception {
         Instant deadline = Instant.now().plus(LIMIT);
         while (Instant.now().isBefore(deadline)) {
             String status = FxToolkit.call(() -> label(window).getText());
-            if (status != null && (status.startsWith("Stopped after") || status.startsWith("The run stopped"))) {
+            if (status != null && (status.startsWith("Stopped after") || status.startsWith("Done: ")
+                    || status.startsWith("The run stopped"))) {
                 return status;
             }
             Thread.sleep(2000);

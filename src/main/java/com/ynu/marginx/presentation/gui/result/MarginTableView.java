@@ -7,18 +7,25 @@ import javafx.collections.ObservableList;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 import java.util.function.ToDoubleFunction;
 
 /**
  * The per-element numbers behind the chart, the same figures detail_out.cpp printed.
  *
- * <p>Rows are appended as each element finishes rather than all at once, so a long run fills the
- * table in front of the user instead of showing nothing until the end.
+ * <p>Rows appear as each element finishes rather than all at once, so a long run fills the table
+ * in front of the user instead of showing nothing until the end. They appear in the circuit's own
+ * order all the same - see {@link #put}.
  */
 public final class MarginTableView extends TableView<ElementMargin> {
 
     private final ObservableList<ElementMargin> rows = FXCollections.observableArrayList();
+
+    /** Where each row's element sits in the netlist, kept in step with {@link #rows}. */
+    private final List<Integer> indices = new ArrayList<>();
 
     public MarginTableView() {
         setItems(rows);
@@ -36,13 +43,25 @@ public final class MarginTableView extends TableView<ElementMargin> {
         getColumns().add(number("Median", ElementMargin::medianValue, "%.3f"));
     }
 
-    /** Appends one finished element. Call on the JavaFX thread. */
-    public void add(ElementMargin result) {
-        rows.add(result);
+    /**
+     * Puts one finished element in its place. Call on the JavaFX thread.
+     *
+     * <p>The results arrive from whichever worker finished first, so appending them would order
+     * the table by how long each element took to measure - different on every run, and not the
+     * order the chart draws, which is the circuit's own. The index is where the element sits in
+     * the netlist, and that is where its row goes.
+     */
+    public void put(int index, ElementMargin result) {
+        int position = Collections.binarySearch(indices, index);
+        // A negative result is the insertion point, which is what an unfinished element gives.
+        int insertAt = position >= 0 ? position : -(position + 1);
+        indices.add(insertAt, index);
+        rows.add(insertAt, result);
     }
 
     public void clear() {
         rows.clear();
+        indices.clear();
     }
 
     public ObservableList<ElementMargin> rows() {

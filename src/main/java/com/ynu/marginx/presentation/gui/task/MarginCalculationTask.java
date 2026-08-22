@@ -7,7 +7,7 @@ import com.ynu.marginx.domain.model.judge.JudgementSpec;
 import com.ynu.marginx.domain.model.margin.ElementMargin;
 import com.ynu.marginx.domain.model.margin.MarginTable;
 import java.time.Duration;
-import java.util.function.Consumer;
+import java.util.function.ObjIntConsumer;
 import javafx.application.Platform;
 import javafx.concurrent.Task;
 
@@ -25,10 +25,15 @@ public final class MarginCalculationTask extends Task<MarginTable> {
     private final CalculateMarginUseCase useCase;
     private final Netlist netlist;
     private final JudgementSpec spec;
-    private final Consumer<ElementMargin> onElementCompleted;
+    private final ObjIntConsumer<ElementMargin> onElementCompleted;
 
+    /**
+     * @param onElementCompleted given each result and the index of the element it belongs to. The
+     *                           index matters: results arrive in whatever order the workers finish
+     *                           and a caller showing them wants the circuit's order, not that one.
+     */
     public MarginCalculationTask(CalculateMarginUseCase useCase, Netlist netlist, JudgementSpec spec,
-                                 Consumer<ElementMargin> onElementCompleted) {
+                                 ObjIntConsumer<ElementMargin> onElementCompleted) {
         this.useCase = useCase;
         this.netlist = netlist;
         this.spec = spec;
@@ -51,7 +56,7 @@ public final class MarginCalculationTask extends Task<MarginTable> {
 
             @Override
             public void elementCompleted(int index, ElementMargin result) {
-                Platform.runLater(() -> onElementCompleted.accept(result));
+                Platform.runLater(() -> onElementCompleted.accept(result, index));
             }
 
             @Override

@@ -51,8 +51,9 @@ class MarginResultViewsTest {
         MarginTableView table = FxToolkit.call(MarginTableView::new);
         FxToolkit.run(() -> {
             chart.show(table());
-            for (ElementMargin row : table().entries()) {
-                table.add(row);
+            MarginTable measured = table();
+            for (int index = 0; index < measured.size(); index++) {
+                table.put(index, measured.get(index));
             }
             // What MainWindow wires up between the two.
             table.getSelectionModel().selectedItemProperty().addListener(
@@ -73,14 +74,45 @@ class MarginResultViewsTest {
     void theTableFillsOneRowAtATime() {
         MarginTableView table = FxToolkit.call(MarginTableView::new);
 
-        FxToolkit.run(() -> table.add(entry("R01", -10, 20)));
+        FxToolkit.run(() -> table.put(0, entry("R01", -10, 20)));
         assertThat(FxToolkit.call(() -> table.rows().size())).isEqualTo(1);
 
-        FxToolkit.run(() -> table.add(entry("R02", -30, 40)));
+        FxToolkit.run(() -> table.put(1, entry("R02", -30, 40)));
         assertThat(FxToolkit.call(() -> table.rows().size())).isEqualTo(2);
 
         FxToolkit.run(table::clear);
         assertThat(FxToolkit.call(() -> table.rows().size())).isZero();
+    }
+
+    @Test
+    void theRowsFollowTheCircuitAndNotTheOrderTheyFinishedIn() {
+        MarginTableView table = FxToolkit.call(MarginTableView::new);
+
+        // The searches run in parallel, so a slow first element arrives after a quick third one.
+        FxToolkit.run(() -> {
+            table.put(2, entry("R03", -30, 40));
+            table.put(0, entry("R01", -10, 20));
+            table.put(3, entry("R04", -40, 50));
+            table.put(1, entry("R02", -20, 30));
+        });
+
+        assertThat(FxToolkit.call(() -> table.rows().stream().map(ElementMargin::displayName).toList()))
+                .containsExactly("R01", "R02", "R03", "R04");
+    }
+
+    @Test
+    void clearingLetsTheNextRunStartFromTheTop() {
+        MarginTableView table = FxToolkit.call(MarginTableView::new);
+
+        FxToolkit.run(() -> {
+            table.put(1, entry("R02", -20, 30));
+            table.clear();
+            // Without forgetting the indices too, this row would be placed after the cleared one.
+            table.put(0, entry("R01", -10, 20));
+        });
+
+        assertThat(FxToolkit.call(() -> table.rows().stream().map(ElementMargin::displayName).toList()))
+                .containsExactly("R01");
     }
 
     private MarginTable table() {

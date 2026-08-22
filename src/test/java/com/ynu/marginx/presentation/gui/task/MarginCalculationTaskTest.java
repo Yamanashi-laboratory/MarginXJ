@@ -56,7 +56,7 @@ class MarginCalculationTaskTest {
                 MarginResultRepository.NONE);
 
         MarginCalculationTask task = new MarginCalculationTask(useCase,
-                Circuits.synchronizedPair(1.0), Circuits.singleWindow(), result -> {
+                Circuits.synchronizedPair(1.0), Circuits.singleWindow(), (result, index) -> {
                     delivered.add(result);
                     bothArrived.countDown();
                 });
@@ -83,7 +83,7 @@ class MarginCalculationTaskTest {
                 new BinarySearchMarginSearcher(new OperationEvaluator(slow, new OperationJudge())),
                 MarginResultRepository.NONE);
         MarginCalculationTask task = new MarginCalculationTask(useCase,
-                Circuits.singleResistor(1.0), Circuits.singleWindow(), result -> { });
+                Circuits.singleResistor(1.0), Circuits.singleWindow(), (result, index) -> { });
         task.messageProperty().addListener((observable, previous, message) -> {
             if (message != null && message.startsWith("Measuring R01")) {
                 running.countDown();
