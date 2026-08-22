@@ -201,6 +201,10 @@ MarginXJ
 PATH にあれば設定は不要です。1〜3 は「どの実行ファイルを使うか」の明示指定なので、
 **指定したのに見つからない場合は、黙って他の候補にフォールバックせずエラーになります。**
 
+GUI では上部の **Simulators...** ボタンから同じ設定を行えます。JoSIM と JSIM それぞれについて
+「見つかったかどうか」と「上の 1〜5 のどれで見つかったか」を表示し、実行ファイルを選び直すことも、
+保存済みのパスを消して PATH の探索に戻すこともできます。保存先は CLI と同じ設定ファイルです。
+
 保存する場合（一度実行すれば以降も有効です）。保存先は OS 標準の設定ディレクトリで、
 Windows は `%APPDATA%\MarginXJ`、macOS は `~/Library/Application Support/MarginXJ`、
 Linux は `$XDG_CONFIG_HOME`（既定 `~/.config/marginxj`）です。
