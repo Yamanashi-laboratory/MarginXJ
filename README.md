@@ -473,3 +473,21 @@ JoSIM 自体の物理計算以外は実物と同じ経路を通るため、次�
 **実 JoSIM が `.FILE` ディレクティブで出力先を決めるか**は、かつて未検証事項でしたが、
 JoSIM 2.6.8 で**決めることを実測で確認済み**です（`.FILE` で指定した名前のファイルが作業ディレクトリに
 生成されます）。`-o` を渡す形への変更は不要でした。JSIM も同じく `.FILE` を尊重します。
+
+## ライセンス
+
+MarginXJ は **MIT ライセンス**です。全文は [LICENSE](LICENSE) にあります。
+
+移植元の [MarginX](https://github.com/Yamanashi-laboratory/MarginX)（C++、2023 年）も同じ作者に
+よるもので、MarginXJ はその Java 移植にあたります。`test_circuits/` の回路と判定ファイルも
+MarginX 由来の資産で、同じライセンスに含まれます。
+
+**シミュレータは MarginXJ に含まれません。** JoSIM は MIT ライセンスで、
+[JoSIM の Releases](https://github.com/JoeyDelp/JoSIM/releases) から各自で入手してください。
+JSIM には明示的なライセンス文書がなく、これが同梱しない判断の理由の一つです
+（[ADR 0001](docs/adr/0001-distribution-strategy.md)）。
+
+配布物（`.msi` / `.deb` / portable zip / fat jar）には JavaFX・RichTextFX・picocli と Java
+ランタイムが含まれます。それぞれの著作権表示は
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) にまとめています。RichTextFX 系の
+BSD 2-Clause がバイナリ配布での表示再掲を求めているためです。
