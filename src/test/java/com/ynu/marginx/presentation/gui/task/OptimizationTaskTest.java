@@ -48,16 +48,19 @@ class OptimizationTaskTest {
     }
 
     @Test
-    void handsOverEveryMeasurementWhileTheRunIsStillGoing() throws Exception {
+    void handsOverEveryReMeasurementAndNotOnlyTheFinalOne() throws Exception {
         List<MarginTable> measured = new CopyOnWriteArrayList<>();
-        CountDownLatch firstArrived = new CountDownLatch(1);
+        // The Critical Margin Method measures once before the loop and again after moving the
+        // element. Both are handed over through Platform.runLater, so they have to be waited for:
+        // the task can finish before the JavaFX thread has delivered the last of them.
+        CountDownLatch bothArrived = new CountDownLatch(2);
         OperationEvaluator evaluator = evaluator(new WindowSimulator(0, 0.5, 1.5));
 
         OptimizationTask task = new OptimizationTask(netlists, MarginResultRepository.NONE,
                 0, CriticalMarginMethod.MAX_TRIALS + 1,
                 table -> {
                     measured.add(table);
-                    firstArrived.countDown();
+                    bothArrived.countDown();
                 },
                 useCase -> useCase.withCriticalMarginMethod(new CriticalMarginMethod(
                         useCase.measurements(new ExhaustiveMarginSearcher(evaluator)),
@@ -66,8 +69,8 @@ class OptimizationTaskTest {
 
         OptimizationOutcome outcome = run(task);
 
-        assertThat(firstArrived.await(TIMEOUT_SECONDS, TimeUnit.SECONDS))
-                .as("a measurement must reach the window before the run has finished")
+        assertThat(bothArrived.await(TIMEOUT_SECONDS, TimeUnit.SECONDS))
+                .as("every re-measurement must reach the window, not just the one the run ended on")
                 .isTrue();
         assertThat(measured).hasSizeGreaterThanOrEqualTo(2);
         assertThat(outcome.netlist().element(0).value()).isNotEqualTo(1.35);
