@@ -31,6 +31,20 @@ public final class CenterOfGravityOptimizer {
         public static Settings defaults() {
             return new Settings(500, 100, 5, 60, 100);
         }
+
+        /**
+         * The same settings with a different cycle limit, which is the one a caller can safely
+         * change. {@code trialsPerCycle} is not: the yield is compared against
+         * {@code yieldThreshold} as a count of surviving trials, and that only means a percentage
+         * because there are a hundred of them. Halving the trials would put the threshold out of
+         * reach and the spread would never widen again.
+         */
+        public Settings withCycles(int newCycles) {
+            if (newCycles < 1) {
+                throw new IllegalArgumentException("An optimisation needs at least one cycle");
+            }
+            return new Settings(newCycles, trialsPerCycle, yieldWindow, yieldThreshold, stallLimit);
+        }
     }
 
     /**

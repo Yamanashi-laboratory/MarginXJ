@@ -44,6 +44,7 @@ import com.ynu.marginx.presentation.gui.task.OptimizationTask;
 import com.ynu.marginx.shared.exception.MarginXException;
 import java.io.File;
 import java.nio.file.Path;
+import java.util.List;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Alert;
@@ -52,9 +53,12 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
+import javafx.scene.control.Spinner;
+import javafx.scene.control.SpinnerValueFactory;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
+import javafx.scene.Node;
 import javafx.scene.control.Tooltip;
 import javafx.concurrent.Task;
 import javafx.scene.layout.BorderPane;
@@ -85,6 +89,8 @@ public final class MainWindow extends BorderPane {
     private final ChoiceBox<Mode> modeChoice = new ChoiceBox<>();
     private final ChoiceBox<ScoreChoice> scoreChoice = new ChoiceBox<>();
     private final Label scoreLabel = new Label("Maximise:");
+    private final Spinner<Integer> cycleLimit = new Spinner<>();
+    private final Label cycleLabel = new Label("Cycles:");
     private final Button runButton = new Button("Run");
     private final Button cancelButton = new Button("Cancel");
     private final Button exportPngButton = new Button("Export PNG");
@@ -172,6 +178,19 @@ public final class MainWindow extends BorderPane {
         modeChoice.setValue(Mode.BINARY);
         modeChoice.valueProperty().addListener((observable, previous, mode) -> showScoreChoice(mode));
 
+        // Only the cycle count is offered. The trials per cycle are not: the yield threshold is
+        // compared against a count of surviving trials and only reads as a percentage because
+        // there are a hundred of them.
+        int defaultCycles = CenterOfGravityOptimizer.Settings.defaults().cycles();
+        cycleLimit.setValueFactory(
+                new SpinnerValueFactory.IntegerSpinnerValueFactory(1, 100_000, defaultCycles, 10));
+        cycleLimit.setEditable(true);
+        cycleLimit.setPrefWidth(110);
+        Tooltip.install(cycleLimit, new Tooltip("The most Monte Carlo cycles the run may take."
+                + " The default of " + defaultCycles + " is the value the original uses; a smaller"
+                + " number gives a quick look at the trend. A run still stops early when the yield"
+                + " stops improving."));
+
         scoreChoice.getItems().addAll(ScoreChoice.values());
         scoreChoice.setValue(ScoreChoice.CRITICAL);
         scoreChoice.setConverter(new ScoreChoiceLabels());
@@ -191,7 +210,8 @@ public final class MainWindow extends BorderPane {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
         HBox second = new HBox(8, new Label("Mode:"), modeChoice, scoreLabel, scoreChoice,
-                runButton, cancelButton, spacer, exportPngButton, exportCsvButton);
+                cycleLabel, cycleLimit, runButton, cancelButton,
+                spacer, exportPngButton, exportCsvButton);
         second.setAlignment(Pos.CENTER_LEFT);
 
         HBox simulatorRow = new HBox(8, simulatorLabel, simulatorButton);
@@ -387,7 +407,8 @@ public final class MainWindow extends BorderPane {
     private OptimizationTask optimisation(Mode mode, OperationEvaluator evaluator,
                                           NetlistRepository netlists, MarginResultRepository results,
                                           Netlist netlist, JudgementSpec spec, String baseName) {
-        CenterOfGravityOptimizer.Settings settings = CenterOfGravityOptimizer.Settings.defaults();
+        CenterOfGravityOptimizer.Settings settings =
+                CenterOfGravityOptimizer.Settings.defaults().withCycles(cycleLimit.getValue());
         boolean centreOfGravity = mode.usesScore();
         ScoreChoice score = scoreChoice.getValue();
         OptimizationTask started = new OptimizationTask(netlists, results,
@@ -445,12 +466,13 @@ public final class MainWindow extends BorderPane {
         chart.show(measured);
     }
 
+    /** The two CGM variants are the only run with a score to pick or a cycle count to bound. */
     private void showScoreChoice(Mode mode) {
         boolean shown = mode != null && mode.usesScore();
-        scoreLabel.setVisible(shown);
-        scoreLabel.setManaged(shown);
-        scoreChoice.setVisible(shown);
-        scoreChoice.setManaged(shown);
+        for (Node control : List.of(scoreLabel, scoreChoice, cycleLabel, cycleLimit)) {
+            control.setVisible(shown);
+            control.setManaged(shown);
+        }
     }
 
     private void cancel() {
@@ -496,6 +518,7 @@ public final class MainWindow extends BorderPane {
         cancelButton.setDisable(!running);
         modeChoice.setDisable(running);
         scoreChoice.setDisable(running);
+        cycleLimit.setDisable(running);
         boolean hasRows = !table.rows().isEmpty();
         exportPngButton.setDisable(running || !hasRows);
         exportCsvButton.setDisable(running || !hasRows);
