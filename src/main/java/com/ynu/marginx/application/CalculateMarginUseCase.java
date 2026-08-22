@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * The pool is therefore shut down explicitly rather than with try-with-resources, whose close()
  * waits for every task to finish - exactly what cancelling is trying to avoid.
  */
-public final class CalculateMarginUseCase {
+public final class CalculateMarginUseCase implements CancellableRun {
 
     private final MarginSearcher searcher;
     private final MarginResultRepository resultRepository;
@@ -103,6 +103,7 @@ public final class CalculateMarginUseCase {
      * the button - and interrupts the workers, which unwind through the simulator adapter and let
      * it kill the external process and delete its working directory.
      */
+    @Override
     public void cancel() {
         cancelled = true;
         ExecutorService pool = running.get();
@@ -123,6 +124,7 @@ public final class CalculateMarginUseCase {
     }
 
     /** Waits for the workers to finish unwinding, for a caller that is about to exit the JVM. */
+    @Override
     public boolean awaitTermination(Duration timeout) {
         ExecutorService pool = running.get();
         if (pool == null) {

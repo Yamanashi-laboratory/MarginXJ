@@ -1,11 +1,11 @@
 package com.ynu.marginx.presentation.cli;
 
 import com.ynu.marginx.application.CalculateMarginUseCase;
-import com.ynu.marginx.application.ProgressListener;
+import com.ynu.marginx.application.CancellableRun;
 import com.ynu.marginx.application.JudgeOperationUseCase;
+import com.ynu.marginx.application.OptimizationReport;
 import com.ynu.marginx.application.OptimizeCircuitUseCase;
 import com.ynu.marginx.application.ScoreChoice;
-import com.ynu.marginx.application.ParallelOperationSampler;
 import com.ynu.marginx.domain.model.circuit.Netlist;
 import com.ynu.marginx.domain.model.judge.JudgementOutcome;
 import com.ynu.marginx.domain.model.judge.JudgementSpec;
@@ -41,6 +41,7 @@ import com.ynu.marginx.infrastructure.simulator.SimulatorRegistry;
 import com.ynu.marginx.infrastructure.simulator.SimulatorWorkspaces;
 import com.ynu.marginx.presentation.cli.view.DetailView;
 import com.ynu.marginx.presentation.cli.view.MarginChartView;
+import com.ynu.marginx.presentation.cli.view.OptimizationProgressBarView;
 import com.ynu.marginx.presentation.cli.view.ProgressBarView;
 import com.ynu.marginx.shared.exception.MarginXException;
 import java.nio.file.Path;
@@ -87,8 +88,8 @@ public final class MarginXCommand implements Callable<Integer> {
 
     private static final Duration SHUTDOWN_GRACE = Duration.ofSeconds(10);
 
-    /** The calculation the shutdown hook should stop, if any is running. */
-    private volatile CalculateMarginUseCase active;
+    /** The run the shutdown hook should stop, if any is in progress. */
+    private volatile CancellableRun active;
 
     @Option(names = {"-s", "--score"},
             description = "What an optimisation maximises: 1 critical, 2 bias, 3 upper, 4 lower,"
@@ -191,13 +192,13 @@ public final class MarginXCommand implements Callable<Integer> {
     private OptimizationOutcome optimize(Netlist netlist, JudgementSpec spec, OperationEvaluator evaluator,
                                          NetlistRepository netlists, MarginResultRepository results) {
         System.out.println(" ~ Critical Margin Method ~");
+        OptimizeCircuitUseCase useCase = track(new OptimizeCircuitUseCase(netlists, results));
         // The C++ tool measures once with the exhaustive search and re-measures with the binary one.
-        MarginTableCalculator initial = measurement(new ExhaustiveMarginSearcher(evaluator));
-        MarginTableCalculator refined = measurement(new BinarySearchMarginSearcher(evaluator));
+        MarginTableCalculator initial = useCase.measurements(new ExhaustiveMarginSearcher(evaluator));
+        MarginTableCalculator refined = useCase.measurements(new BinarySearchMarginSearcher(evaluator));
         CriticalMarginMethod method =
                 new CriticalMarginMethod(initial, refined, new CriticalElementFinder());
-        return new OptimizeCircuitUseCase(netlists, results)
-                .withCriticalMarginMethod(method, netlist, spec);
+        return useCase.withCriticalMarginMethod(method, netlist, spec);
     }
 
     private OptimizationOutcome optimizeYield(OperationMode selected, Netlist netlist, JudgementSpec spec,
@@ -210,29 +211,21 @@ public final class MarginXCommand implements Callable<Integer> {
         ScoreChoice score = ScoreChoice.fromCode(scoreCode);
         System.out.println(" Score : " + score.label());
         CriticalMarginCalculator criticalMargins = new CriticalMarginCalculator();
+        CenterOfGravityOptimizer.Settings settings = CenterOfGravityOptimizer.Settings.defaults();
+        OptimizeCircuitUseCase useCase = track(new OptimizeCircuitUseCase(netlists, results,
+                new OptimizationProgressBarView(System.out)));
         CenterOfGravityOptimizer optimizer = new CenterOfGravityOptimizer(
-                new ParallelOperationSampler(evaluator),
-                measurement(new BinarySearchMarginSearcher(evaluator)), criticalMargins,
-                new ScoreCalculator(criticalMargins), RandomSource.unseeded(),
-                CenterOfGravityOptimizer.Settings.defaults(),
+                useCase.sampling(evaluator, settings.cycles()),
+                useCase.measurements(new BinarySearchMarginSearcher(evaluator)), criticalMargins,
+                new ScoreCalculator(criticalMargins), RandomSource.unseeded(), settings,
                 sequential
                         ? CenterOfGravityOptimizer.Variant.SEQUENTIAL
                         : CenterOfGravityOptimizer.Variant.YIELD_UP);
-        return new OptimizeCircuitUseCase(netlists, results)
-                .withCenterOfGravity(optimizer, netlist, spec, score.weights());
+        return useCase.withCenterOfGravity(optimizer, netlist, spec, score.weights());
     }
 
-    /** Every re-measurement inside an optimisation loop runs the elements in parallel too. */
-    private MarginTableCalculator measurement(MarginSearcher searcher) {
-        return (netlist, spec) -> track(new CalculateMarginUseCase(searcher, MarginResultRepository.NONE))
-                .execute(netlist, spec, ProgressListener.NOOP);
-    }
-
-    /**
-     * Remembers the calculation now in progress so the shutdown hook can stop it. An optimisation
-     * builds a fresh one for every re-measurement, so this is set repeatedly during a long run.
-     */
-    private CalculateMarginUseCase track(CalculateMarginUseCase useCase) {
+    /** Remembers the run now in progress so the shutdown hook can stop it. */
+    private <T extends CancellableRun> T track(T useCase) {
         active = useCase;
         return useCase;
     }
@@ -244,7 +237,7 @@ public final class MarginXCommand implements Callable<Integer> {
      */
     private void installShutdownHook(ProcessExecutor executor) {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            CalculateMarginUseCase running = active;
+            CancellableRun running = active;
             if (running != null) {
                 running.cancel();
                 running.awaitTermination(SHUTDOWN_GRACE);
@@ -270,18 +263,8 @@ public final class MarginXCommand implements Callable<Integer> {
     }
 
     private int report(OptimizationOutcome outcome) {
-        System.out.printf(" Stopped after %d trial(s): %s%n", outcome.trials(), explain(outcome.reason()));
+        System.out.printf(" Stopped after %d trial(s): %s%n", outcome.trials(), OptimizationReport.explain(outcome.reason()));
         return report(outcome.margins());
-    }
-
-    private String explain(OptimizationOutcome.StopReason reason) {
-        return switch (reason) {
-            case SAME_CRITICAL_ELEMENT -> "the same element came up critical again";
-            case CRITICAL_ELEMENT_IS_FIXED -> "the critical element is marked *FIX";
-            case NOTHING_TO_OPTIMIZE -> "no element could be measured";
-            case YIELD_STALLED -> "the yield stopped improving";
-            case TRIALS_EXHAUSTED -> "the trial limit was reached";
-        };
     }
 
     private int report(JudgementOutcome outcome) {
