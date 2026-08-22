@@ -63,6 +63,17 @@ tasks.test {
     }
 }
 
+// The one resource whose contents come from the build. Restricted to that file so a dollar sign
+// in any other resource stays a dollar sign.
+tasks.processResources {
+    // Gradle cannot see that the substituted value is an input, so without this the task stays
+    // UP-TO-DATE when only the version changes and a release ships the previous one's number.
+    inputs.property("version", project.version)
+    filesMatching("marginx-build.properties") {
+        expand("version" to project.version)
+    }
+}
+
 tasks.named<JavaExec>("run") {
     standardInput = System.`in`
 }
