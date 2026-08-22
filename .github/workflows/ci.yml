@@ -1,0 +1,61 @@
+name: ci
+
+# Runs the test suite on both target platforms. The release workflow builds installers but its
+# packaging tasks do not depend on `test`, so without this nothing would ever run the tests.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# A second push to the same branch makes the first one's result uninteresting.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      # Without a display the JavaFX tests skip themselves rather than fail, so a green run would
+      # not mean what it looks like it means. Xvfb is what makes them actually run.
+      - name: Install Xvfb
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Build and test (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum ./gradlew build
+
+      # The Windows runner has a desktop session of its own.
+      - name: Build and test (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: ./gradlew build
+
+      - name: Publish the test report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-results-${{ matrix.os }}
+          path: build/reports/tests/test
+          if-no-files-found: ignore
+
+      # The post-job cache save tars ~/.gradle while the daemon still holds its .lock files, which
+      # on Windows fails the tar and stores a partial cache.
+      - name: Stop the Gradle daemon
+        if: always()
+        shell: bash
+        run: ./gradlew --stop
