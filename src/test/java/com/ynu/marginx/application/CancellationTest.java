@@ -182,9 +182,12 @@ class CancellationTest {
     }
 
     /**
-     * The names of the working directories that exist right now. Compared as a set rather than
-     * counted: the temp folder is shared with everything else on the machine, and an unrelated
-     * directory left behind by some earlier crash would otherwise decide whether this test passes.
+     * The names of the working directories that exist right now.
+     *
+     * <p>The build gives the test JVM a temp folder of its own, so nothing else on the machine
+     * creates directories in the one being watched. Within it the comparison is still a set rather
+     * than a count, so that a directory left behind by an earlier run cannot decide whether this
+     * one passes.
      */
     private Set<String> workDirectories() throws IOException {
         Path tempRoot = Path.of(System.getProperty("java.io.tmpdir"));
