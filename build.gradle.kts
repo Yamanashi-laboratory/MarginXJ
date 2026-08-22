@@ -6,7 +6,7 @@ plugins {
 
 group = "com.ynu"
 // Overridable so a tagged CI build can stamp the installer: ./gradlew jpackage -Pversion=0.2.0
-version = (findProperty("version") as String?)?.takeUnless { it == "unspecified" } ?: "0.1.0-SNAPSHOT"
+version = (findProperty("version") as String?)?.takeUnless { it == "unspecified" } ?: "0.1.0"
 
 // Runs on any JDK 21+; bytecode is pinned to 21 so the workplace toolchain can consume it.
 
@@ -60,6 +60,17 @@ tasks.test {
     listOf("marginx.it.josim", "marginx.it.jsim",
             "marginx.josim.command", "marginx.jsim.command").forEach { key ->
         System.getProperty(key)?.let { systemProperty(key, it) }
+    }
+}
+
+// The one resource whose contents come from the build. Restricted to that file so a dollar sign
+// in any other resource stays a dollar sign.
+tasks.processResources {
+    // Gradle cannot see that the substituted value is an input, so without this the task stays
+    // UP-TO-DATE when only the version changes and a release ships the previous one's number.
+    inputs.property("version", project.version)
+    filesMatching("marginx-build.properties") {
+        expand("version" to project.version)
     }
 }
 

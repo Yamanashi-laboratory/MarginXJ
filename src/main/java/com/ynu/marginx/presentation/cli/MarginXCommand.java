@@ -56,7 +56,7 @@ import picocli.CommandLine.Parameters;
 @Command(name = "marginx",
         description = "Margin analysis for superconducting circuits.",
         mixinStandardHelpOptions = true,
-        version = "MarginXJ 0.1.0")
+        versionProvider = BuildVersionProvider.class)
 public final class MarginXCommand implements Callable<Integer> {
 
     @Parameters(index = "0", paramLabel = "CIRCUIT",
