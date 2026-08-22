@@ -148,6 +148,9 @@ tasks.register<Exec>("jpackage") {
         buildList {
             addAll(listOf("--type", type))
             addAll(listOf("--name", "MarginXJ"))
+            // Shown in Add/Remove Programs and in the package metadata. Without it jpackage
+            // writes "Unknown", which is not what other labs should see when they install this.
+            addAll(listOf("--vendor", "Yamanashi Lab."))
             // MSI rejects a qualifier such as -SNAPSHOT: the version must be numeric.
             addAll(listOf("--app-version", version.toString().substringBefore('-')))
             addAll(listOf("--input", inputDir.absolutePath))
