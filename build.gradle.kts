@@ -6,7 +6,7 @@ plugins {
 
 group = "com.ynu"
 // Overridable so a tagged CI build can stamp the installer: ./gradlew jpackage -Pversion=0.2.0
-version = (findProperty("version") as String?)?.takeUnless { it == "unspecified" } ?: "0.1.0-SNAPSHOT"
+version = (findProperty("version") as String?)?.takeUnless { it == "unspecified" } ?: "0.1.0"
 
 // Runs on any JDK 21+; bytecode is pinned to 21 so the workplace toolchain can consume it.
 
