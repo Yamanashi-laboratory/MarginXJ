@@ -370,7 +370,8 @@ public final class MainWindow extends BorderPane {
     private MarginCalculationTask measurement(OperationEvaluator evaluator, MarginResultRepository results,
                                               Netlist netlist, JudgementSpec spec) {
         MarginCalculationTask started = new MarginCalculationTask(
-                new CalculateMarginUseCase(searcher(evaluator), results), netlist, spec, table::add);
+                new CalculateMarginUseCase(searcher(evaluator), results), netlist, spec,
+                (result, index) -> table.put(index, result));
         started.setOnSucceeded(event -> finished(started.getValue()));
         started.setOnCancelled(event ->
                 stopped("Stopped after " + table.rows().size() + " elements."));
@@ -439,7 +440,7 @@ public final class MainWindow extends BorderPane {
     private void showMeasurement(MarginTable measured) {
         table.clear();
         for (int index = 0; index < measured.size(); index++) {
-            table.add(measured.get(index));
+            table.put(index, measured.get(index));
         }
         chart.show(measured);
     }
