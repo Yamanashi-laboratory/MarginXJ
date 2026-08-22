@@ -338,6 +338,14 @@ JoSIM のコマンド名は設定で差し替えられます。
   2 分 54 秒で成功、4 つのアセットが公開されました。アクション更新後に `workflow_dispatch` で
   再実行し、**警告 0 件**（以前は setup-java の非推奨と Node 20 の非推奨が各 2 件）、
   Windows のキャッシュ保存も `Failed to save` なしで完了することを確認しています。
+- **`v0.1.0` の正式リリース。** `release.yml` が 3 ジョブとも成功し、`.msi`（63 MB）、
+  `.deb`（46 MB）、portable zip 2 種が公開されました。警告 0 件で、`publish` ジョブでのみ動く
+  `actions/download-artifact@v7` もここで初めて実行され、問題なく動作しています。
+- **ライセンス表示の同梱。** 公開された `.deb` を `dpkg-deb -c` で検査し、
+  `/opt/marginxj/lib/LICENSE`（1074 B）と `/opt/marginxj/lib/THIRD-PARTY-NOTICES.md`（3480 B）が
+  含まれることを確認しました。`.msi` は `msiexec /a` で展開して同様に確認済みです。
+- **`--version` がビルドの版番号を返すこと。** `-Pversion=9.9.9` でビルドした fat jar が
+  `MarginXJ 9.9.9` を返すことを実測しました。
 - **最適化モードの実回路での収束（既定設定）。** 実 JoSIM + `test_circuits/MUX_clked.cir`
   （マージン対象 33 個 / 判定 51 件）を、設定を縮めずそのまま回した結果です。
 
@@ -364,9 +372,6 @@ JoSIM のコマンド名は設定で差し替えられます。
 - **GUI からの最適化の長時間実行。** 画面からの実行経路は自動テスト（`OptimizationTaskTest`）と
   実 JoSIM での CLI 実行で押さえていますが、ウィンドウを開いたまま数十分の CGM を完走させた
   実測はまだありません。
-- **`actions/download-artifact@v7`。** 使うのはタグ push でのみ動く `publish` ジョブなので、
-  `workflow_dispatch` での確認では実行されていません（`if: startsWith(github.ref, 'refs/tags/')`
-  によりスキップ）。次のタグ push が最初の実行になります。
 - **CI での実シミュレータのテスト。** `RealJosimIT` / `RealJsimIT` の 4 件は CI では
   スキップされます（両 OS で 144 件通過 / 4 件スキップ）。JoSIM には apt パッケージが無く、
   ソースからのビルドが必要なためです。これらは手元の実 JoSIM / 実 JSIM で確認しています。
@@ -493,6 +498,7 @@ JSIM には明示的なライセンス文書がなく、これが同梱しない
 BSD 2-Clause がバイナリ配布での表示再掲を求めているためです。
 
 **この 2 つのファイルは配布物そのものに同梱されます。** リポジトリに置くだけでは条件を
-満たさないためで、インストール後は起動ファイルと同じ場所（Windows なら `MarginXJ.exe` の隣、
-Linux なら `/opt/marginxj/` 直下）に、fat jar ならアーカイブのルートに入っています。
+満たさないためで、インストール後の場所は OS で異なり、Windows は `MarginXJ.exe` の隣、Linux は
+`/opt/marginxj/lib/` の下です（jpackage が `--app-content` を置く場所の違い）。
+fat jar ならアーカイブのルートに入っています。
 依存を追加・更新したときは `THIRD-PARTY-NOTICES.md` も更新してください。
