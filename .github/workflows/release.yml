@@ -70,6 +70,14 @@ jobs:
           Copy-Item build/jpackage/msi/*.msi dist/
           Compress-Archive -Path build/jpackage/app-image/* -DestinationPath "dist/marginxj-${{ matrix.asset }}-portable.zip"
 
+      # The post-job cache save tars ~/.gradle while the daemon still holds its .lock files, which
+      # on Windows fails the tar and stores a partial cache. Stopping it first is what lets the
+      # cache be written whole. It runs even after a failed build, when the daemon is still up.
+      - name: Stop the Gradle daemon
+        if: always()
+        shell: bash
+        run: ./gradlew --stop
+
       - uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.asset }}
