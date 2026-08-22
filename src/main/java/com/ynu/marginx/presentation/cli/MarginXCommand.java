@@ -4,6 +4,7 @@ import com.ynu.marginx.application.CalculateMarginUseCase;
 import com.ynu.marginx.application.ProgressListener;
 import com.ynu.marginx.application.JudgeOperationUseCase;
 import com.ynu.marginx.application.OptimizeCircuitUseCase;
+import com.ynu.marginx.application.ScoreChoice;
 import com.ynu.marginx.application.ParallelOperationSampler;
 import com.ynu.marginx.domain.model.circuit.Netlist;
 import com.ynu.marginx.domain.model.judge.JudgementOutcome;

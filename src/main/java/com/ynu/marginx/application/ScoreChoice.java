@@ -1,4 +1,4 @@
-package com.ynu.marginx.presentation.cli;
+package com.ynu.marginx.application;
 
 import com.ynu.marginx.domain.model.optimize.ScoreWeights;
 import com.ynu.marginx.shared.exception.MarginXException;
@@ -7,8 +7,9 @@ import java.util.Arrays;
 /**
  * What an optimisation run is trying to maximise - the choice select_score.cpp puts to the user.
  *
- * <p>It is a command-line option here rather than a prompt, so an optimisation can be scripted;
- * the numbering follows the original menu.
+ * <p>It is an option rather than a prompt, so an optimisation can be scripted; the numbering
+ * follows the original menu. It sits in the application layer because both front ends offer the
+ * same choice - the command line by number, the window by name.
  */
 public enum ScoreChoice {
 
