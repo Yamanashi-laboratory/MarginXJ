@@ -87,6 +87,9 @@ tasks.named<JavaExec>("run") {
     standardInput = System.`in`
 }
 
+/** The properties that turn the second Windows launcher into a console application. */
+val cliLauncher = file("src/jpackage/marginxj-cli.properties")
+
 /** The licence and the third-party notices, which every distributable has to carry. */
 val noticeFiles = listOf(file("LICENSE"), file("THIRD-PARTY-NOTICES.md"))
 
@@ -170,8 +173,14 @@ tasks.register<Exec>("jpackage") {
     val outputDir = layout.buildDirectory.dir("jpackage/$type").get().asFile
     outputs.dir(outputDir)
 
-    argumentProviders.add(CommandLineArgumentProvider {
+    // jpackage refuses to write into a directory that already holds an application, so a second
+    // run without a clean in between fails. Clearing it is what makes the task repeatable.
+    doFirst {
+        outputDir.deleteRecursively()
         outputDir.mkdirs()
+    }
+
+    argumentProviders.add(CommandLineArgumentProvider {
         buildList {
             addAll(listOf("--type", type))
             addAll(listOf("--name", "MarginXJ"))
@@ -188,9 +197,12 @@ tasks.register<Exec>("jpackage") {
             // find what they are allowed to do with it.
             addAll(listOf("--app-content", noticeFiles.joinToString(",") { it.absolutePath }))
             if (windows) {
-                // MarginXJ is a command-line tool as much as a window: without a console the
-                // launcher would swallow everything the CLI prints, and every startup error too.
-                add("--win-console")
+                // MarginXJ is a command-line tool as much as a window, and Windows makes those two
+                // things exclusive per launcher: a console is required for the CLI to print
+                // anything at all, and is an empty black window behind every GUI session. So the
+                // application ships both, and the main one - what a double-click starts - is the
+                // window.
+                addAll(listOf("--add-launcher", "MarginXJ-cli=" + cliLauncher.absolutePath))
             }
             if (type == "deb") {
                 // Debian wants a contact behind the vendor name, or it writes "Unknown".
