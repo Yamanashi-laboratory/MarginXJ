@@ -26,6 +26,8 @@ import com.ynu.marginx.presentation.gui.editor.EditorPane;
 import com.ynu.marginx.presentation.gui.export.ResultExporter;
 import com.ynu.marginx.presentation.gui.result.MarginChartView;
 import com.ynu.marginx.presentation.gui.result.MarginTableView;
+import com.ynu.marginx.presentation.gui.settings.SimulatorSettingsDialog;
+import com.ynu.marginx.presentation.gui.settings.SimulatorSettingsModel;
 import com.ynu.marginx.presentation.gui.task.MarginCalculationTask;
 import com.ynu.marginx.shared.exception.MarginXException;
 import java.io.File;
@@ -76,6 +78,7 @@ public final class MainWindow extends BorderPane {
     private final EditorPane editor = new EditorPane();
 
     private final SimulatorRegistry registry;
+    private final UserSimulatorSettings userSettings;
     private SimulatorRegistry.Selection selection;
     private Path circuitFile;
     private MarginCalculationTask task;
@@ -99,12 +102,21 @@ public final class MainWindow extends BorderPane {
     }
 
     public MainWindow() {
-        this(new SimulatorRegistry(SimulatorProperties.load(), UserSimulatorSettings.inDefaultLocation(),
-                new NetlistRenderer(), new ProcessExecutor()));
+        this(UserSimulatorSettings.inDefaultLocation());
+    }
+
+    private MainWindow(UserSimulatorSettings userSettings) {
+        this(new SimulatorRegistry(SimulatorProperties.load(), userSettings,
+                new NetlistRenderer(), new ProcessExecutor()), userSettings);
     }
 
     MainWindow(SimulatorRegistry registry) {
+        this(registry, UserSimulatorSettings.inDefaultLocation());
+    }
+
+    MainWindow(SimulatorRegistry registry, UserSimulatorSettings userSettings) {
         this.registry = registry;
+        this.userSettings = userSettings;
         setTop(controls());
         setCenter(results());
         setBottom(statusBar());
@@ -127,6 +139,9 @@ public final class MainWindow extends BorderPane {
         exportPngButton.setOnAction(event -> exportPng());
         exportCsvButton.setOnAction(event -> exportCsv());
 
+        Button simulatorButton = new Button("Simulators...");
+        simulatorButton.setOnAction(event -> openSimulatorSettings());
+
         HBox first = new HBox(8, chooseCircuit, circuitLabel);
         first.setAlignment(Pos.CENTER_LEFT);
         Region spacer = new Region();
@@ -135,7 +150,10 @@ public final class MainWindow extends BorderPane {
                 spacer, exportPngButton, exportCsvButton);
         second.setAlignment(Pos.CENTER_LEFT);
 
-        VBox box = new VBox(8, first, second, simulatorLabel);
+        HBox simulatorRow = new HBox(8, simulatorLabel, simulatorButton);
+        simulatorRow.setAlignment(Pos.CENTER_LEFT);
+
+        VBox box = new VBox(8, first, second, simulatorRow);
         box.setPadding(new Insets(0, 0, 10, 0));
         return box;
     }
@@ -190,6 +208,18 @@ public final class MainWindow extends BorderPane {
             simulatorLabel.setText("No simulator found. Install JoSIM to run a calculation.");
             Tooltip.install(simulatorLabel, new Tooltip(e.getMessage()));
         }
+    }
+
+    /**
+     * Neither simulator ships with MarginXJ, so somebody who only ever opens the window needs a
+     * way to say where theirs is. Re-resolving on close means the label reflects the change at
+     * once rather than at the next start.
+     */
+    private void openSimulatorSettings() {
+        new SimulatorSettingsDialog(new SimulatorSettingsModel(registry, userSettings), window())
+                .showAndWait();
+        resolveSimulator();
+        updateButtons(false);
     }
 
     private void wireSelection() {

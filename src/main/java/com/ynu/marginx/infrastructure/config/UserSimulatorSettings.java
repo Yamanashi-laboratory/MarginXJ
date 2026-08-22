@@ -72,6 +72,22 @@ public final class UserSimulatorSettings {
         }
     }
 
+    /** Forgets a saved path, so resolution falls back to the environment and PATH again. */
+    public void clear(SimulatorKind kind) {
+        Properties properties = load();
+        if (properties.remove(kind.settingKey()) == null) {
+            return;
+        }
+        try {
+            Files.createDirectories(file.getParent());
+            try (OutputStream out = Files.newOutputStream(file)) {
+                properties.store(out, "MarginXJ simulator locations");
+            }
+        } catch (IOException e) {
+            throw new MarginXException("Cannot write the settings file " + file, e);
+        }
+    }
+
     public Path file() {
         return file;
     }
