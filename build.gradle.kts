@@ -87,6 +87,12 @@ tasks.named<JavaExec>("run") {
     standardInput = System.`in`
 }
 
+/**
+ * The application icon, per platform - jpackage takes one file and wants the format the desktop it
+ * is building for uses. Both are square crops of src/jpackage/Icon.png, which is the original.
+ */
+fun iconFile(windows: Boolean) = file(if (windows) "src/jpackage/MarginXJ.ico" else "src/jpackage/MarginXJ.png")
+
 /** The properties that turn the second Windows launcher into a console application. */
 val cliLauncher = file("src/jpackage/marginxj-cli.properties")
 
@@ -173,6 +179,14 @@ tasks.register<Exec>("jpackage") {
     val outputDir = layout.buildDirectory.dir("jpackage/$type").get().asFile
     outputs.dir(outputDir)
 
+    // Gradle sees the arguments through a provider it cannot look inside, so nothing here counts
+    // as an input unless it is named. Without this, editing the icon or the launcher properties
+    // leaves the task UP-TO-DATE and the change simply does not appear in the installer.
+    inputs.files(iconFile(windows), cliLauncher)
+    inputs.files(noticeFiles)
+    inputs.property("packageType", type)
+    inputs.property("appVersion", version.toString())
+
     // jpackage refuses to write into a directory that already holds an application, so a second
     // run without a clean in between fails. Clearing it is what makes the task repeatable.
     doFirst {
@@ -193,6 +207,7 @@ tasks.register<Exec>("jpackage") {
             addAll(listOf("--main-jar", fatJar.get().archiveFileName.get()))
             addAll(listOf("--main-class", application.mainClass.get()))
             addAll(listOf("--dest", outputDir.absolutePath))
+            addAll(listOf("--icon", iconFile(windows).absolutePath))
             // Beside the launcher rather than buried in app/, so that whoever installs this can
             // find what they are allowed to do with it.
             addAll(listOf("--app-content", noticeFiles.joinToString(",") { it.absolutePath }))
@@ -207,9 +222,18 @@ tasks.register<Exec>("jpackage") {
             if (type == "deb") {
                 // Debian wants a contact behind the vendor name, or it writes "Unknown".
                 addAll(listOf("--linux-deb-maintainer", "syouc9@yahoo.co.jp"))
+                // Without this the package installs under /opt and appears in no menu at all.
+                add("--linux-shortcut")
             }
             if (type == "msi") {
                 add("--win-dir-chooser")
+                // An installer that leaves nothing in the start menu makes the user go and find
+                // the executable in Program Files, which is where an application goes to be
+                // forgotten. The desktop shortcut is offered rather than imposed.
+                add("--win-menu")
+                addAll(listOf("--win-menu-group", "MarginXJ"))
+                add("--win-shortcut")
+                add("--win-shortcut-prompt")
                 // Stable across releases, otherwise every MSI installs alongside the previous one.
                 addAll(listOf("--win-upgrade-uuid", "4f18fd88-60c1-4655-9e0d-4792021cb2ee"))
             }
