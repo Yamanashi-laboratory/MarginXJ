@@ -367,6 +367,9 @@ JoSIM のコマンド名は設定で差し替えられます。
 - **`actions/download-artifact@v7`。** 使うのはタグ push でのみ動く `publish` ジョブなので、
   `workflow_dispatch` での確認では実行されていません（`if: startsWith(github.ref, 'refs/tags/')`
   によりスキップ）。次のタグ push が最初の実行になります。
+- **CI での実シミュレータのテスト。** `RealJosimIT` / `RealJsimIT` の 4 件は CI では
+  スキップされます（両 OS で 144 件通過 / 4 件スキップ）。JoSIM には apt パッケージが無く、
+  ソースからのビルドが必要なためです。これらは手元の実 JoSIM / 実 JSIM で確認しています。
 - **一時ディレクトリを検査するテストの並行実行耐性。** `CancellationTest` は共有の temp を
   走査するため、同じ端末で別の MarginXJ を同時に走らせると、他プロセスの作業ディレクトリを
   拾って偽陽性で落ちます（実際に検証実行と同時にビルドして遭遇しました）。
@@ -431,7 +434,24 @@ JAVA_TOOL_OPTIONS = -Djdk.net.unixdomain.tmpdir=%USERPROFILE%/.gradle/uds
   選択連動、結果の逐次追加、中止。ツールキットが無い環境ではスキップされます
 - `CancellationTest` — 中断してもシミュレータのプロセスと一時ディレクトリが残らないこと、
   素子ごとの進捗が通知されること。スタブに遅延を入れ、シミュレーション実行中に中断させて検証
+- `OptimizeCircuitUseCaseTest` / `OptimizationTaskTest` — 最適化の進捗通知とキャンセル。
+  サイクル・再測定が数えられること、中断時に何も書き出さないこと
+- `MainWindowTest` — ウィンドウが提供するモード一覧と、CGM の 2 種を選んだときだけ
+  スコア選択が現れること
 - `RealJosimIT` / `RealJsimIT` — 実シミュレータに対するテスト。既定ではスキップ
+
+### CI
+
+`.github/workflows/ci.yml` が push と pull request のたびに `ubuntu-22.04` と `windows-2022` の
+両方で `./gradlew build` を回します。ここまでで実際に踏んだ不具合の多くが OS 固有だったためです
+（Windows がファイルハンドルを離さない、後始末が片方でだけ失敗する、など）。
+
+**Linux では `xvfb-run` を通します。** ディスプレイが無いと JavaFX を使うテストは失敗ではなく
+スキップになるため、そのままでは「緑だが実は検証していない」状態になります。
+
+`release.yml` も、パッケージング前に同じ `./gradlew build` を実行します。タグ push では
+`ci.yml` は走らないので、そこで別途テストしない限り「テストが落ちる状態のインストーラが
+公開される」経路が残るためです。
 
 ### 実シミュレータでのテスト
 
