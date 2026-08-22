@@ -162,6 +162,10 @@ tasks.register<Exec>("jpackage") {
                 // launcher would swallow everything the CLI prints, and every startup error too.
                 add("--win-console")
             }
+            if (type == "deb") {
+                // Debian wants a contact behind the vendor name, or it writes "Unknown".
+                addAll(listOf("--linux-deb-maintainer", "syouc9@yahoo.co.jp"))
+            }
             if (type == "msi") {
                 add("--win-dir-chooser")
                 // Stable across releases, otherwise every MSI installs alongside the previous one.
