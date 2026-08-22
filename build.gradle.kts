@@ -67,6 +67,9 @@ tasks.named<JavaExec>("run") {
     standardInput = System.`in`
 }
 
+/** The licence and the third-party notices, which every distributable has to carry. */
+val noticeFiles = listOf(file("LICENSE"), file("THIRD-PARTY-NOTICES.md"))
+
 // Distributable 1: a runnable JAR, for anyone with a JDK 21+ and for platforms we ship no
 // installer for. It also feeds jpackage below.
 val fatJar = tasks.register<Jar>("fatJar") {
@@ -84,6 +87,10 @@ val fatJar = tasks.register<Jar>("fatJar") {
     from(configurations.runtimeClasspath.map { classpath ->
         classpath.map { if (it.isDirectory) it else zipTree(it) }
     })
+    // BSD 2-Clause asks for the copyright notice to travel with a binary distribution, and a jar
+    // handed to somebody is one. At the root rather than under META-INF, where the dependencies
+    // keep their own and DuplicatesStrategy.EXCLUDE would decide between them.
+    from(noticeFiles)
     // Signatures from the dependencies no longer verify once repackaged, and each JavaFX jar
     // brings its own module-info that means nothing on a classpath.
     exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "module-info.class")
@@ -157,6 +164,9 @@ tasks.register<Exec>("jpackage") {
             addAll(listOf("--main-jar", fatJar.get().archiveFileName.get()))
             addAll(listOf("--main-class", application.mainClass.get()))
             addAll(listOf("--dest", outputDir.absolutePath))
+            // Beside the launcher rather than buried in app/, so that whoever installs this can
+            // find what they are allowed to do with it.
+            addAll(listOf("--app-content", noticeFiles.joinToString(",") { it.absolutePath }))
             if (windows) {
                 // MarginXJ is a command-line tool as much as a window: without a console the
                 // launcher would swallow everything the CLI prints, and every startup error too.

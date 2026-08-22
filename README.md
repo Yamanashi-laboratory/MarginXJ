@@ -491,3 +491,8 @@ JSIM には明示的なライセンス文書がなく、これが同梱しない
 ランタイムが含まれます。それぞれの著作権表示は
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) にまとめています。RichTextFX 系の
 BSD 2-Clause がバイナリ配布での表示再掲を求めているためです。
+
+**この 2 つのファイルは配布物そのものに同梱されます。** リポジトリに置くだけでは条件を
+満たさないためで、インストール後は起動ファイルと同じ場所（Windows なら `MarginXJ.exe` の隣、
+Linux なら `/opt/marginxj/` 直下）に、fat jar ならアーカイブのルートに入っています。
+依存を追加・更新したときは `THIRD-PARTY-NOTICES.md` も更新してください。
