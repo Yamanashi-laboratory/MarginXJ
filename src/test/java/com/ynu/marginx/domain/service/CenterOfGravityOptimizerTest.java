@@ -1,6 +1,7 @@
 package com.ynu.marginx.domain.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.ynu.marginx.domain.model.circuit.Netlist;
 import com.ynu.marginx.domain.model.judge.JudgementSpec;
@@ -91,6 +92,25 @@ class CenterOfGravityOptimizerTest {
         assertThat(CenterOfGravityOptimizer.Variant.YIELD_UP.widensAt(60, 60)).isTrue();
         assertThat(CenterOfGravityOptimizer.Variant.SEQUENTIAL.widensAt(60, 60)).isFalse();
         assertThat(CenterOfGravityOptimizer.Variant.SEQUENTIAL.widensAt(61, 60)).isTrue();
+    }
+
+    @Test
+    void aShorterRunChangesTheCycleLimitAndNothingElse() {
+        Settings shortened = Settings.defaults().withCycles(20);
+
+        assertThat(shortened.cycles()).isEqualTo(20);
+        // Everything else has to stay put. The threshold is compared against a count of surviving
+        // trials, so it only reads as a percentage while there are a hundred of them.
+        assertThat(shortened.trialsPerCycle()).isEqualTo(Settings.defaults().trialsPerCycle());
+        assertThat(shortened.yieldWindow()).isEqualTo(Settings.defaults().yieldWindow());
+        assertThat(shortened.yieldThreshold()).isEqualTo(Settings.defaults().yieldThreshold());
+        assertThat(shortened.stallLimit()).isEqualTo(Settings.defaults().stallLimit());
+    }
+
+    @Test
+    void aRunOfNoCyclesIsRefused() {
+        assertThatThrownBy(() -> Settings.defaults().withCycles(0))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     private CenterOfGravityOptimizer optimizer(double lower, double upper, long seed) {

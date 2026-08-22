@@ -91,6 +91,11 @@ public final class MarginXCommand implements Callable<Integer> {
     /** The run the shutdown hook should stop, if any is in progress. */
     private volatile CancellableRun active;
 
+    @Option(names = "--cycles", paramLabel = "N",
+            description = "How many Monte Carlo cycles a CGM run may take. Defaults to 500, the"
+                    + " value the original uses; a smaller number gives a quick look at the trend.")
+    private Integer cycles;
+
     @Option(names = {"-s", "--score"},
             description = "What an optimisation maximises: 1 critical, 2 bias, 3 upper, 4 lower,"
                     + " 5 critical+bias, 6 critical+2*bias. Defaults to 1.")
@@ -211,7 +216,7 @@ public final class MarginXCommand implements Callable<Integer> {
         ScoreChoice score = ScoreChoice.fromCode(scoreCode);
         System.out.println(" Score : " + score.label());
         CriticalMarginCalculator criticalMargins = new CriticalMarginCalculator();
-        CenterOfGravityOptimizer.Settings settings = CenterOfGravityOptimizer.Settings.defaults();
+        CenterOfGravityOptimizer.Settings settings = settings();
         OptimizeCircuitUseCase useCase = track(new OptimizeCircuitUseCase(netlists, results,
                 new OptimizationProgressBarView(System.out)));
         CenterOfGravityOptimizer optimizer = new CenterOfGravityOptimizer(
@@ -222,6 +227,18 @@ public final class MarginXCommand implements Callable<Integer> {
                         ? CenterOfGravityOptimizer.Variant.SEQUENTIAL
                         : CenterOfGravityOptimizer.Variant.YIELD_UP);
         return useCase.withCenterOfGravity(optimizer, netlist, spec, score.weights());
+    }
+
+    private CenterOfGravityOptimizer.Settings settings() {
+        CenterOfGravityOptimizer.Settings defaults = CenterOfGravityOptimizer.Settings.defaults();
+        if (cycles == null) {
+            return defaults;
+        }
+        if (cycles < 1) {
+            throw new MarginXException("--cycles must be at least 1");
+        }
+        System.out.printf(" Cycles : %d (default %d)%n", cycles, defaults.cycles());
+        return defaults.withCycles(cycles);
     }
 
     /** Remembers the run now in progress so the shutdown hook can stop it. */

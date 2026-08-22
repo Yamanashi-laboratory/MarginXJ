@@ -3,6 +3,7 @@ package com.ynu.marginx.presentation.gui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.ynu.marginx.application.ScoreChoice;
+import com.ynu.marginx.domain.service.CenterOfGravityOptimizer;
 import com.ynu.marginx.infrastructure.config.SimulatorProperties;
 import com.ynu.marginx.infrastructure.config.UserSimulatorSettings;
 import com.ynu.marginx.infrastructure.netlist.NetlistRenderer;
@@ -15,6 +16,7 @@ import java.util.List;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.ChoiceBox;
+import javafx.scene.control.Spinner;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -71,6 +73,26 @@ class MainWindowTest {
     }
 
     @Test
+    void offersACycleLimitOnlyForTheRunsThatHaveCycles() {
+        FxToolkit.run(() -> {
+            MainWindow window = window();
+            ChoiceBox<?> mode = modeChoice(window);
+            Spinner<?> cycles = spinner(window);
+
+            // A margin measurement has no cycles, and neither has the Critical Margin Method.
+            assertThat(cycles.isManaged()).isFalse();
+
+            select(mode, "Optimise: Center of Gravity (CGM)");
+            assertThat(cycles.isManaged()).isTrue();
+            // The default has to be the value the original uses, or a plain run would not match it.
+            assertThat(cycles.getValue()).isEqualTo(CenterOfGravityOptimizer.Settings.defaults().cycles());
+
+            select(mode, "Optimise: Critical Margin Method");
+            assertThat(cycles.isManaged()).isFalse();
+        });
+    }
+
+    @Test
     void namesTheScoresTheWayTheOriginalMenuDoes() {
         String shown = FxToolkit.call(() -> scoreChoice(window()).getConverter()
                 .toString(ScoreChoice.CRITICAL_AND_DOUBLE_BIAS));
@@ -92,6 +114,23 @@ class MainWindowTest {
     @SuppressWarnings("unchecked")
     private ChoiceBox<ScoreChoice> scoreChoice(MainWindow window) {
         return (ChoiceBox<ScoreChoice>) choiceBoxes(window).get(1);
+    }
+
+    private Spinner<?> spinner(MainWindow window) {
+        List<Spinner<?>> found = new ArrayList<>();
+        collectSpinners(window, found);
+        return found.get(0);
+    }
+
+    private void collectSpinners(Node node, List<Spinner<?>> found) {
+        if (node instanceof Spinner<?> spinner) {
+            found.add(spinner);
+        }
+        if (node instanceof Parent parent) {
+            for (Node child : parent.getChildrenUnmodifiable()) {
+                collectSpinners(child, found);
+            }
+        }
     }
 
     private List<ChoiceBox<?>> choiceBoxes(MainWindow window) {
