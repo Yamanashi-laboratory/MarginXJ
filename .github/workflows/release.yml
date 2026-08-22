@@ -47,6 +47,17 @@ jobs:
           esac
           echo "MARGINX_VERSION=$version" >> "$GITHUB_ENV"
 
+      # jpackage reaches fatJar without going through `test`, so an untested tag would otherwise
+      # be packaged and published. Xvfb is what lets the JavaFX tests run rather than skip.
+      - name: Test (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb && xvfb-run --auto-servernum ./gradlew build
+
+      - name: Test (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: ./gradlew build
+
       - name: Build installer
         shell: bash
         run: ./gradlew jpackage -Pversion="$MARGINX_VERSION"
