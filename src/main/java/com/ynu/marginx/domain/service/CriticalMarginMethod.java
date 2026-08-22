@@ -19,8 +19,8 @@ import java.util.Optional;
  */
 public final class CriticalMarginMethod {
 
-    /** CRITICAL_NUM. */
-    private static final int MAX_TRIALS = 10;
+    /** CRITICAL_NUM. Public because a caller showing progress has no other way to know the limit. */
+    public static final int MAX_TRIALS = 10;
 
     private final MarginTableCalculator initialMargins;
     private final MarginTableCalculator refinedMargins;

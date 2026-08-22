@@ -1,17 +1,28 @@
 package com.ynu.marginx.presentation.gui;
 
 import com.ynu.marginx.application.CalculateMarginUseCase;
+import com.ynu.marginx.application.OptimizationReport;
+import com.ynu.marginx.application.OptimizeCircuitUseCase;
+import com.ynu.marginx.application.ScoreChoice;
 import com.ynu.marginx.domain.model.circuit.Netlist;
 import com.ynu.marginx.domain.model.judge.JudgementSpec;
 import com.ynu.marginx.domain.model.margin.ElementMargin;
 import com.ynu.marginx.domain.model.margin.MarginTable;
+import com.ynu.marginx.domain.model.optimize.OptimizationOutcome;
 import com.ynu.marginx.domain.port.CircuitSimulator;
 import com.ynu.marginx.domain.port.MarginResultRepository;
+import com.ynu.marginx.domain.port.NetlistRepository;
 import com.ynu.marginx.domain.service.BinarySearchMarginSearcher;
+import com.ynu.marginx.domain.service.CenterOfGravityOptimizer;
+import com.ynu.marginx.domain.service.CriticalElementFinder;
+import com.ynu.marginx.domain.service.CriticalMarginCalculator;
+import com.ynu.marginx.domain.service.CriticalMarginMethod;
 import com.ynu.marginx.domain.service.ExhaustiveMarginSearcher;
 import com.ynu.marginx.domain.service.MarginSearcher;
 import com.ynu.marginx.domain.service.OperationEvaluator;
 import com.ynu.marginx.domain.service.OperationJudge;
+import com.ynu.marginx.domain.service.RandomSource;
+import com.ynu.marginx.domain.service.ScoreCalculator;
 import com.ynu.marginx.infrastructure.config.SimulatorProperties;
 import com.ynu.marginx.infrastructure.config.UserSimulatorSettings;
 import com.ynu.marginx.infrastructure.judgement.FileJudgementSpecRepository;
@@ -29,6 +40,7 @@ import com.ynu.marginx.presentation.gui.result.MarginTableView;
 import com.ynu.marginx.presentation.gui.settings.SimulatorSettingsDialog;
 import com.ynu.marginx.presentation.gui.settings.SimulatorSettingsModel;
 import com.ynu.marginx.presentation.gui.task.MarginCalculationTask;
+import com.ynu.marginx.presentation.gui.task.OptimizationTask;
 import com.ynu.marginx.shared.exception.MarginXException;
 import java.io.File;
 import java.nio.file.Path;
@@ -44,6 +56,7 @@ import javafx.scene.control.SplitPane;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.Tooltip;
+import javafx.concurrent.Task;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -51,6 +64,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Window;
+import javafx.util.StringConverter;
 
 /**
  * The margin window: pick a circuit, run it, watch the results arrive.
@@ -68,7 +82,9 @@ public final class MainWindow extends BorderPane {
     private final Label simulatorLabel = new Label();
     private final Label statusLabel = new Label();
     private final ProgressBar progress = new ProgressBar(0);
-    private final ChoiceBox<SearchMode> modeChoice = new ChoiceBox<>();
+    private final ChoiceBox<Mode> modeChoice = new ChoiceBox<>();
+    private final ChoiceBox<ScoreChoice> scoreChoice = new ChoiceBox<>();
+    private final Label scoreLabel = new Label("Maximise:");
     private final Button runButton = new Button("Run");
     private final Button cancelButton = new Button("Cancel");
     private final Button exportPngButton = new Button("Export PNG");
@@ -81,18 +97,40 @@ public final class MainWindow extends BorderPane {
     private final UserSimulatorSettings userSettings;
     private SimulatorRegistry.Selection selection;
     private Path circuitFile;
-    private MarginCalculationTask task;
+    private Task<?> task;
+    /** How to wait for the finished task's workers, whichever kind of task it was. */
+    private Runnable awaitCleanup;
 
-    /** The margin searches this window offers; the optimisers are a later step. */
-    private enum SearchMode {
-        EXHAUSTIVE("Accurate (decade refinement)"),
-        BINARY("Binary search"),
-        SYNCHRONISED("Accurate, synchronised groups");
+    /**
+     * Everything this window can run, in the order the C++ menu lists it: measure the margins as
+     * they are, or move the circuit and measure again.
+     */
+    private enum Mode {
+        EXHAUSTIVE("Margin: accurate (decade refinement)", false, false),
+        BINARY("Margin: binary search", false, false),
+        SYNCHRONISED("Margin: accurate, synchronised groups", false, false),
+        CRITICAL_MARGIN("Optimise: Critical Margin Method", true, false),
+        CENTER_OF_GRAVITY("Optimise: Center of Gravity (CGM)", true, true),
+        SEQUENTIAL_CGM("Optimise: sequential CGM", true, true);
 
         private final String label;
+        private final boolean optimises;
+        private final boolean usesScore;
 
-        SearchMode(String label) {
+        Mode(String label, boolean optimises, boolean usesScore) {
             this.label = label;
+            this.optimises = optimises;
+            this.usesScore = usesScore;
+        }
+
+        /** Whether the run moves the circuit, which is what decides where its result is written. */
+        boolean optimises() {
+            return optimises;
+        }
+
+        /** Only the CGM variants maximise a score; the Critical Margin Method has nothing to pick. */
+        boolean usesScore() {
+            return usesScore;
         }
 
         @Override
@@ -130,8 +168,14 @@ public final class MainWindow extends BorderPane {
         Button chooseCircuit = new Button("Choose circuit...");
         chooseCircuit.setOnAction(event -> chooseCircuit());
 
-        modeChoice.getItems().addAll(SearchMode.values());
-        modeChoice.setValue(SearchMode.BINARY);
+        modeChoice.getItems().addAll(Mode.values());
+        modeChoice.setValue(Mode.BINARY);
+        modeChoice.valueProperty().addListener((observable, previous, mode) -> showScoreChoice(mode));
+
+        scoreChoice.getItems().addAll(ScoreChoice.values());
+        scoreChoice.setValue(ScoreChoice.CRITICAL);
+        scoreChoice.setConverter(new ScoreChoiceLabels());
+        showScoreChoice(modeChoice.getValue());
 
         runButton.setOnAction(event -> run());
         runButton.setDefaultButton(true);
@@ -146,8 +190,8 @@ public final class MainWindow extends BorderPane {
         first.setAlignment(Pos.CENTER_LEFT);
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox second = new HBox(8, new Label("Mode:"), modeChoice, runButton, cancelButton,
-                spacer, exportPngButton, exportCsvButton);
+        HBox second = new HBox(8, new Label("Mode:"), modeChoice, scoreLabel, scoreChoice,
+                runButton, cancelButton, spacer, exportPngButton, exportCsvButton);
         second.setAlignment(Pos.CENTER_LEFT);
 
         HBox simulatorRow = new HBox(8, simulatorLabel, simulatorButton);
@@ -285,7 +329,8 @@ public final class MainWindow extends BorderPane {
         Path directory = circuitFile.getParent();
         String baseName = stripExtension(circuitFile.getFileName().toString());
         try {
-            Netlist netlist = new FileNetlistRepository(directory, new NetlistParser()).load(baseName);
+            NetlistRepository netlists = new FileNetlistRepository(directory, new NetlistParser());
+            Netlist netlist = netlists.load(baseName);
             JudgementSpec spec =
                     new FileJudgementSpecRepository(directory, new JudgementSpecParser()).load(baseName);
 
@@ -298,32 +343,113 @@ public final class MainWindow extends BorderPane {
             MarginResultRepository results = new FileMarginResultRepository(directory,
                     new FileMarginResultRepository.Provenance(simulator.displayName(), simulator.name()));
 
-            task = new MarginCalculationTask(
-                    new CalculateMarginUseCase(searcher(evaluator), results), netlist, spec, table::add);
-            progress.progressProperty().bind(task.progressProperty());
-            statusLabel.textProperty().bind(task.messageProperty());
-            task.setOnSucceeded(event -> finish(task.getValue()));
-            task.setOnCancelled(event -> finish(null));
-            task.setOnFailed(event -> {
-                finish(null);
-                report(task.getException());
-            });
-
-            updateButtons(true);
-            Thread worker = new Thread(task, "marginx-calculation");
-            worker.setDaemon(true);
-            worker.start();
+            Mode mode = modeChoice.getValue();
+            start(mode.optimises()
+                    ? optimisation(mode, evaluator, netlists, results, netlist, spec, baseName)
+                    : measurement(evaluator, results, netlist, spec));
         } catch (MarginXException e) {
             report(e);
         }
+    }
+
+    /** Binds the progress reporting and runs it. What to do when it ends is already on the task. */
+    private void start(Task<?> started) {
+        task = started;
+        progress.progressProperty().bind(started.progressProperty());
+        statusLabel.textProperty().bind(started.messageProperty());
+        started.setOnFailed(event -> {
+            stopped("The run stopped with an error.");
+            report(started.getException());
+        });
+        updateButtons(true);
+        Thread worker = new Thread(started, "marginx-calculation");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private MarginCalculationTask measurement(OperationEvaluator evaluator, MarginResultRepository results,
+                                              Netlist netlist, JudgementSpec spec) {
+        MarginCalculationTask started = new MarginCalculationTask(
+                new CalculateMarginUseCase(searcher(evaluator), results), netlist, spec, table::add);
+        started.setOnSucceeded(event -> finished(started.getValue()));
+        started.setOnCancelled(event ->
+                stopped("Stopped after " + table.rows().size() + " elements."));
+        awaitCleanup = started::awaitCleanup;
+        return started;
+    }
+
+    /**
+     * An optimisation moves the circuit and measures it again, over and over. The window follows it
+     * measurement by measurement, so the chart shows where the circuit has got to rather than
+     * nothing at all until the run ends.
+     */
+    private OptimizationTask optimisation(Mode mode, OperationEvaluator evaluator,
+                                          NetlistRepository netlists, MarginResultRepository results,
+                                          Netlist netlist, JudgementSpec spec, String baseName) {
+        CenterOfGravityOptimizer.Settings settings = CenterOfGravityOptimizer.Settings.defaults();
+        boolean centreOfGravity = mode.usesScore();
+        ScoreChoice score = scoreChoice.getValue();
+        OptimizationTask started = new OptimizationTask(netlists, results,
+                // Cycles for the CGM; the Critical Margin Method has only its trial limit to go on.
+                centreOfGravity ? settings.cycles() : 0,
+                centreOfGravity ? 0 : CriticalMarginMethod.MAX_TRIALS + 1,
+                this::showMeasurement,
+                useCase -> centreOfGravity
+                        ? useCase.withCenterOfGravity(
+                                centreOfGravity(mode, useCase, evaluator, settings), netlist, spec,
+                                score.weights())
+                        : useCase.withCriticalMarginMethod(
+                                criticalMargin(useCase, evaluator), netlist, spec));
+        started.setOnSucceeded(event -> finished(started.getValue(), baseName));
+        started.setOnCancelled(event -> stopped("Cancelled. The chart shows the last measurement."));
+        awaitCleanup = started::awaitCleanup;
+        return started;
+    }
+
+    private CriticalMarginMethod criticalMargin(OptimizeCircuitUseCase useCase, OperationEvaluator evaluator) {
+        // The C++ tool measures once with the exhaustive search and re-measures with the binary one.
+        return new CriticalMarginMethod(
+                useCase.measurements(new ExhaustiveMarginSearcher(evaluator)),
+                useCase.measurements(new BinarySearchMarginSearcher(evaluator)),
+                new CriticalElementFinder());
+    }
+
+    private CenterOfGravityOptimizer centreOfGravity(Mode mode, OptimizeCircuitUseCase useCase,
+                                                     OperationEvaluator evaluator,
+                                                     CenterOfGravityOptimizer.Settings settings) {
+        CriticalMarginCalculator criticalMargins = new CriticalMarginCalculator();
+        return new CenterOfGravityOptimizer(
+                useCase.sampling(evaluator, settings.cycles()),
+                useCase.measurements(new BinarySearchMarginSearcher(evaluator)), criticalMargins,
+                new ScoreCalculator(criticalMargins), RandomSource.unseeded(), settings,
+                mode == Mode.SEQUENTIAL_CGM
+                        ? CenterOfGravityOptimizer.Variant.SEQUENTIAL
+                        : CenterOfGravityOptimizer.Variant.YIELD_UP);
     }
 
     private MarginSearcher searcher(OperationEvaluator evaluator) {
         return switch (modeChoice.getValue()) {
             case BINARY -> new BinarySearchMarginSearcher(evaluator);
             case SYNCHRONISED -> ExhaustiveMarginSearcher.synchronizingGroups(evaluator);
-            case EXHAUSTIVE -> new ExhaustiveMarginSearcher(evaluator);
+            default -> new ExhaustiveMarginSearcher(evaluator);
         };
+    }
+
+    /** Shows a whole table at once, which is how a re-measurement arrives. */
+    private void showMeasurement(MarginTable measured) {
+        table.clear();
+        for (int index = 0; index < measured.size(); index++) {
+            table.add(measured.get(index));
+        }
+        chart.show(measured);
+    }
+
+    private void showScoreChoice(Mode mode) {
+        boolean shown = mode != null && mode.usesScore();
+        scoreLabel.setVisible(shown);
+        scoreLabel.setManaged(shown);
+        scoreChoice.setVisible(shown);
+        scoreChoice.setManaged(shown);
     }
 
     private void cancel() {
@@ -332,21 +458,35 @@ public final class MainWindow extends BorderPane {
         }
     }
 
-    private void finish(MarginTable result) {
+    private void finished(MarginTable result) {
+        chart.show(result);
+        settle();
+        statusLabel.setText("Done: " + result.size() + " elements.");
+    }
+
+    private void finished(OptimizationOutcome outcome, String baseName) {
+        showMeasurement(outcome.margins());
+        settle();
+        statusLabel.setText("Stopped after " + outcome.trials() + " trial(s): "
+                + OptimizationReport.explain(outcome.reason())
+                + ". Optimised circuit written to " + baseName + "_out.cir");
+    }
+
+    /** Cancelled or failed: whatever arrived before that is still worth plotting. */
+    private void stopped(String message) {
+        chart.show(new MarginTable(table.rows()));
+        settle();
+        progress.setProgress(0);
+        statusLabel.setText(message);
+    }
+
+    /** Hands the window back to the user: unbind, re-enable, and let the workers finish unwinding. */
+    private void settle() {
         progress.progressProperty().unbind();
         statusLabel.textProperty().unbind();
-        if (result != null) {
-            chart.show(result);
-            statusLabel.setText("Done: " + result.size() + " elements.");
-        } else {
-            // Cancelled or failed: whatever arrived before that is still worth plotting.
-            chart.show(new MarginTable(table.rows()));
-            progress.setProgress(0);
-            statusLabel.setText("Stopped after " + table.rows().size() + " elements.");
-        }
         updateButtons(false);
-        if (task != null) {
-            task.awaitCleanup();
+        if (awaitCleanup != null) {
+            awaitCleanup.run();
         }
     }
 
@@ -354,6 +494,7 @@ public final class MainWindow extends BorderPane {
         runButton.setDisable(running || circuitFile == null || selection == null);
         cancelButton.setDisable(!running);
         modeChoice.setDisable(running);
+        scoreChoice.setDisable(running);
         boolean hasRows = !table.rows().isEmpty();
         exportPngButton.setDisable(running || !hasRows);
         exportCsvButton.setDisable(running || !hasRows);
@@ -402,5 +543,19 @@ public final class MainWindow extends BorderPane {
     private String stripExtension(String fileName) {
         int dot = fileName.lastIndexOf('.');
         return dot <= 0 ? fileName : fileName.substring(0, dot);
+    }
+
+    /** The menu wording from the original, which is what the score is known by in the paper. */
+    private static final class ScoreChoiceLabels extends StringConverter<ScoreChoice> {
+
+        @Override
+        public String toString(ScoreChoice choice) {
+            return choice == null ? "" : choice.label();
+        }
+
+        @Override
+        public ScoreChoice fromString(String label) {
+            throw new UnsupportedOperationException("The list is not editable");
+        }
     }
 }
