@@ -53,6 +53,15 @@ tasks.withType<JavaCompile>().configureEach {
 
 tasks.test {
     useJUnitPlatform()
+    // The tests that assert nothing was left behind scan the temp folder, and cannot tell another
+    // MarginXJ process's working directories from their own leaks - running the suite while a
+    // calculation was going failed three of them for that reason. A temp folder of its own is what
+    // makes the test JVM the only thing creating marginx-* directories in the place it looks.
+    val testTemporaryFolder = layout.buildDirectory.dir("tmp/test-workspaces").get().asFile
+    systemProperty("java.io.tmpdir", testTemporaryFolder.absolutePath)
+    doFirst {
+        testTemporaryFolder.mkdirs()
+    }
     testLogging {
         events("passed", "failed", "skipped")
     }
